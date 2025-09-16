@@ -17,7 +17,15 @@ const io = new Server(server, {
     origin: ["https://purecure-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
     methods: ["GET", "POST"],
     credentials: true
-  }
+  },
+  // Enhanced connection stability settings
+  pingTimeout: 60000,
+  pingInterval: 25000,
+  upgradeTimeout: 30000,
+  allowUpgrades: true,
+  transports: ['polling', 'websocket'],
+  // Allow longer connection time
+  connectTimeout: 45000
 });
 
 // Store connected users and their roles
@@ -53,14 +61,47 @@ io.on('connection', (socket) => {
   socket.on('join', (data) => {
     const { userId, role } = data;
     
-    // Store user information
-    connectedUsers.set(socket.id, { userId, role, socketId: socket.id });
-    userRoles.set(userId, { role, socketId: socket.id });
+    // Check if user was previously connected (reconnection scenario)
+    const existingUser = userRoles.get(userId);
+    
+    if (existingUser) {
+      console.log(`🔄 User ${userId} (${role}) reconnected with new socket ${socket.id}`);
+      
+      // Update socket ID for existing user
+      existingUser.socketId = socket.id;
+      connectedUsers.set(socket.id, { userId, role, socketId: socket.id });
+      
+      // Check if they have any active calls
+      const activeCall = Array.from(activeCalls.values()).find(call => 
+        call.caller === userId || call.callee === userId
+      );
+      
+      if (activeCall) {
+        console.log(`🔗 Restoring active call for user ${userId}`);
+        // Update the socket ID in the active call
+        if (activeCall.caller === userId) {
+          activeCall.callerSocket = socket.id;
+        } else {
+          activeCall.calleeSocket = socket.id;
+        }
+        
+        // Rejoin the call room
+        const callId = Array.from(activeCalls.keys()).find(id => activeCalls.get(id) === activeCall);
+        if (callId) {
+          socket.join(callId);
+          console.log(`🎯 User ${userId} rejoined call room ${callId}`);
+        }
+      }
+    } else {
+      console.log(`✅ New user ${userId} (${role}) joined with socket ${socket.id}`);
+      
+      // Store user information
+      connectedUsers.set(socket.id, { userId, role, socketId: socket.id });
+      userRoles.set(userId, { role, socketId: socket.id });
+    }
     
     // Join role-specific room
     socket.join(role);
-    
-    console.log(`User ${userId} (${role}) joined with socket ${socket.id}`);
     
     // Notify others in the same role about user status
     socket.to(role).emit('user-status', {

@@ -45,13 +45,32 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
     { urls: 'stun:stun1.l.google.com:19302' },
   ], []);
 
-  // Cleanup function
+  // Cleanup function - moved outside useEffect to avoid dependency issues
   const cleanupCall = useCallback(() => {
-    if (callState.localStream) {
-      callState.localStream.getTracks().forEach(track => track.stop());
-    }
+    console.log('🧹 Cleaning up call resources');
+    
+    setCallState(prev => {
+      if (prev.localStream) {
+        console.log('🔇 Stopping local media tracks');
+        prev.localStream.getTracks().forEach(track => {
+          track.stop();
+          console.log(`Stopped ${track.kind} track`);
+        });
+      }
+      
+      return {
+        ...prev,
+        isInCall: false,
+        localStream: null,
+        remoteStream: null,
+        connectionState: null,
+        isAudioEnabled: true,
+        isVideoEnabled: true,
+      };
+    });
 
     if (peerConnectionRef.current) {
+      console.log('🔌 Closing peer connection');
       peerConnectionRef.current.close();
       peerConnectionRef.current = null;
     }
@@ -63,15 +82,10 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       remoteVideoRef.current.srcObject = null;
     }
 
-    setCallState(prev => ({
-      ...prev,
-      isInCall: false,
-      localStream: null,
-      remoteStream: null,
-      connectionState: null,
-    }));
     setIncomingCall(null);
-  }, [callState.localStream]);
+    
+    console.log('✅ Call cleanup completed');
+  }, []); // No dependencies to prevent useEffect recreation
 
   // Get user media
   const getUserMedia = useCallback(async (constraints: MediaStreamConstraints = { video: true, audio: true }) => {
@@ -121,143 +135,256 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       setCallState(prev => ({ ...prev, connectionState: peerConnection.connectionState }));
       
       if (peerConnection.connectionState === 'connected') {
+        console.log('✅ WebRTC connection established successfully');
         setCallState(prev => ({ ...prev, isInCall: true, error: null }));
-      } else if (peerConnection.connectionState === 'failed' || peerConnection.connectionState === 'disconnected') {
-        setCallState(prev => ({ ...prev, error: 'Connection failed' }));
-        cleanupCall();
+      } else if (peerConnection.connectionState === 'failed') {
+        console.log('❌ WebRTC connection failed permanently');
+        setCallState(prev => ({ ...prev, error: 'Connection failed permanently' }));
+        // Only cleanup on permanent failure, not temporary disconnections
+        setTimeout(() => cleanupCall(), 3000); // Give a few seconds for potential recovery
+      } else if (peerConnection.connectionState === 'disconnected') {
+        console.log('⚠️ WebRTC connection disconnected - attempting to maintain call');
+        // Don't immediately cleanup on disconnection - might be temporary
+        setCallState(prev => ({ ...prev, error: 'Connection temporarily lost, attempting to reconnect...' }));
+        
+        // Only cleanup if still disconnected after a reasonable timeout
+        setTimeout(() => {
+          if (peerConnection.connectionState === 'disconnected') {
+            console.log('❌ WebRTC connection remained disconnected, cleaning up');
+            setCallState(prev => ({ ...prev, error: 'Connection lost' }));
+            cleanupCall();
+          }
+        }, 10000); // Wait 10 seconds before giving up
+      } else if (peerConnection.connectionState === 'connecting') {
+        console.log('🔄 WebRTC connection in progress...');
+        setCallState(prev => ({ ...prev, error: null }));
       }
     };
 
     return peerConnection;
   }, [cleanupCall, iceServers]);
 
-  const createOffer = useCallback(async () => {
-    try {
-      const peerConnection = initializePeerConnection();
-      const stream = await getUserMedia();
-      
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream);
-      });
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      
-      if (socketRef.current) {
-        socketRef.current.emit('offer', offer);
-      }
-    } catch (error) {
-      console.error('Error creating offer:', error);
-      setCallState(prev => ({ ...prev, error: 'Failed to create call offer' }));
-    }
-  }, [initializePeerConnection, getUserMedia]);
-
-  const handleOffer = useCallback(async (offer: RTCSessionDescriptionInit) => {
-    try {
-      const peerConnection = initializePeerConnection();
-      const stream = await getUserMedia();
-      
-      stream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, stream);
-      });
-
-      await peerConnection.setRemoteDescription(offer);
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      
-      if (socketRef.current) {
-        socketRef.current.emit('answer', answer);
-      }
-    } catch (error) {
-      console.error('Error handling offer:', error);
-      setCallState(prev => ({ ...prev, error: 'Failed to handle call offer' }));
-    }
-  }, [initializePeerConnection, getUserMedia]);
-
-  const handleAnswer = useCallback(async (answer: RTCSessionDescriptionInit) => {
-    try {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.setRemoteDescription(answer);
-      }
-    } catch (error) {
-      console.error('Error handling answer:', error);
-      setCallState(prev => ({ ...prev, error: 'Failed to handle call answer' }));
-    }
-  }, []);
-
-  const handleIceCandidate = useCallback(async (candidate: RTCIceCandidateInit) => {
-    try {
-      if (peerConnectionRef.current) {
-        await peerConnectionRef.current.addIceCandidate(candidate);
-      }
-    } catch (error) {
-      console.error('Error handling ICE candidate:', error);
-    }
-  }, []);
-
   useEffect(() => {
+    console.log(`🔌 Setting up stable socket for ${userRole} ${userId}`);
+    
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'], // Allow both but prefer websocket
       autoConnect: true,
-      timeout: 20000,
+      timeout: 30000,
       reconnection: true,
       reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
+      reconnectionDelay: 2000,
+      forceNew: false,
+      upgrade: true, // Allow upgrades for better performance
     });
 
     socketRef.current = socket;
 
+    // Create stable internal handlers to avoid dependency issues
+    const internalCleanupCall = () => {
+      console.log('🧹 Cleaning up call resources (internal)');
+      
+      setCallState(prev => {
+        if (prev.localStream) {
+          console.log('🔇 Stopping local media tracks');
+          prev.localStream.getTracks().forEach(track => {
+            track.stop();
+            console.log(`Stopped ${track.kind} track`);
+          });
+        }
+        
+        return {
+          ...prev,
+          isInCall: false,
+          localStream: null,
+          remoteStream: null,
+          connectionState: null,
+          isAudioEnabled: true,
+          isVideoEnabled: true,
+        };
+      });
+
+      if (peerConnectionRef.current) {
+        console.log('🔌 Closing peer connection');
+        peerConnectionRef.current.close();
+        peerConnectionRef.current = null;
+      }
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+
+      setIncomingCall(null);
+      console.log('✅ Call cleanup completed');
+    };
+
+    const internalCreateOffer = async () => {
+      try {
+        const peerConnection = initializePeerConnection();
+        const stream = await getUserMedia();
+        
+        stream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, stream);
+        });
+
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+        
+        if (socketRef.current) {
+          socketRef.current.emit('offer', offer);
+        }
+      } catch (error) {
+        console.error('Error creating offer:', error);
+        setCallState(prev => ({ ...prev, error: 'Failed to create call offer' }));
+      }
+    };
+
+    const internalHandleOffer = async (offer: RTCSessionDescriptionInit) => {
+      try {
+        const peerConnection = initializePeerConnection();
+        const stream = await getUserMedia();
+        
+        stream.getTracks().forEach(track => {
+          peerConnection.addTrack(track, stream);
+        });
+
+        await peerConnection.setRemoteDescription(offer);
+        const answer = await peerConnection.createAnswer();
+        await peerConnection.setLocalDescription(answer);
+        
+        if (socketRef.current) {
+          socketRef.current.emit('answer', answer);
+        }
+      } catch (error) {
+        console.error('Error handling offer:', error);
+        setCallState(prev => ({ ...prev, error: 'Failed to handle call offer' }));
+      }
+    };
+
+    const internalHandleAnswer = async (answer: RTCSessionDescriptionInit) => {
+      try {
+        if (peerConnectionRef.current) {
+          await peerConnectionRef.current.setRemoteDescription(answer);
+        }
+      } catch (error) {
+        console.error('Error handling answer:', error);
+        setCallState(prev => ({ ...prev, error: 'Failed to handle call answer' }));
+      }
+    };
+
+    const internalHandleIceCandidate = async (candidate: RTCIceCandidateInit) => {
+      try {
+        if (peerConnectionRef.current) {
+          await peerConnectionRef.current.addIceCandidate(candidate);
+        }
+      } catch (error) {
+        console.error('Error handling ICE candidate:', error);
+      }
+    };
+
     socket.on('connect', () => {
-      console.log('Connected to signaling server');
+      console.log(`✅ ${userRole} ${userId} connected (${socket.io.engine.transport.name})`);
       socket.emit('join', { userId, role: userRole });
       setCallState(prev => ({ ...prev, isConnected: true, error: null }));
     });
 
     socket.on('disconnect', (reason) => {
-      console.log('Disconnected from signaling server:', reason);
+      console.log(`🔌 ${userRole} ${userId} disconnected: ${reason}`);
       setCallState(prev => ({ ...prev, isConnected: false }));
       
       // Don't clean up call state on disconnect - allow reconnection
       if (reason === 'io client disconnect') {
         // User intentionally disconnected
-        cleanupCall();
+        internalCleanupCall();
       }
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Connection error:', error);
+      console.error(`❌ ${userRole} ${userId} connection error:`, error);
       setCallState(prev => ({ ...prev, error: 'Failed to connect to server' }));
     });
 
     socket.on('reconnect', (attemptNumber) => {
-      console.log('Reconnected to server after', attemptNumber, 'attempts');
+      console.log(`🔄 ${userRole} ${userId} reconnected after ${attemptNumber} attempts`);
       // Re-join with user info after reconnection
       socket.emit('join', { userId, role: userRole });
     });
 
     socket.on('incoming-call', (data: IncomingCall) => {
-      console.log('Incoming call received:', data);
+      console.log('📞 Incoming call received:', data);
       setIncomingCall(data);
     });
 
     socket.on('call-accepted', async () => {
-      await createOffer();
+      console.log('📞 Call accepted by doctor, initiating WebRTC offer');
+      try {
+        await internalCreateOffer();
+        console.log('✅ WebRTC offer created and sent');
+      } catch (error) {
+        console.error('❌ Failed to create offer after call acceptance:', error);
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Failed to establish video connection'
+        }));
+      }
     });
 
     socket.on('call-rejected', () => {
+      console.log('❌ Call was rejected by doctor');
       setCallState(prev => ({ ...prev, error: 'Call was rejected' }));
-      cleanupCall();
+      internalCleanupCall();
     });
 
-    socket.on('offer', handleOffer);
-    socket.on('answer', handleAnswer);
-    socket.on('ice-candidate', handleIceCandidate);
-    socket.on('call-ended', cleanupCall);
+    socket.on('offer', async (offer) => {
+      console.log('📨 Received WebRTC offer');
+      try {
+        await internalHandleOffer(offer);
+        console.log('✅ WebRTC offer processed successfully');
+      } catch (error) {
+        console.error('❌ Failed to handle WebRTC offer:', error);
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Failed to process video connection'
+        }));
+      }
+    });
+    
+    socket.on('answer', async (answer) => {
+      console.log('📨 Received WebRTC answer');
+      try {
+        await internalHandleAnswer(answer);
+        console.log('✅ WebRTC answer processed successfully');
+      } catch (error) {
+        console.error('❌ Failed to handle WebRTC answer:', error);
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Failed to complete video connection'
+        }));
+      }
+    });
+    
+    socket.on('ice-candidate', async (candidate) => {
+      console.log('🧊 Received ICE candidate');
+      try {
+        await internalHandleIceCandidate(candidate);
+      } catch (error) {
+        console.error('❌ Failed to handle ICE candidate:', error);
+      }
+    });
+    
+    socket.on('call-ended', () => {
+      console.log('📞 Call ended by remote user');
+      internalCleanupCall();
+    });
 
     return () => {
+      console.log(`🔌 Cleaning up socket for ${userRole} ${userId}`);
       socket.disconnect();
     };
-  }, [userId, userRole, createOffer, handleOffer, handleAnswer, handleIceCandidate, cleanupCall]);
+  }, [userId, userRole, getUserMedia, initializePeerConnection]); // Added required dependencies
 
   const startCall = useCallback(async (doctorId: string) => {
     try {
@@ -265,12 +392,24 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         throw new Error('Not connected to server');
       }
       
-      // Wait for stable connection if needed
-      if (!callState.isConnected) {
-        console.log('Waiting for stable connection...');
-        await new Promise((resolve) => {
+      console.log(`🚀 Starting call to doctor ${doctorId}`);
+      setCallState(prev => ({ ...prev, error: null }));
+      
+      // Check current socket connection status directly
+      if (!socketRef.current.connected) {
+        console.log('⏳ Waiting for socket connection...');
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => reject(new Error('Connection timeout')), 5000);
+          
+          if (socketRef.current?.connected) {
+            clearTimeout(timeout);
+            resolve(true);
+            return;
+          }
+          
           const checkConnection = () => {
-            if (callState.isConnected && socketRef.current?.connected) {
+            if (socketRef.current?.connected) {
+              clearTimeout(timeout);
               resolve(true);
             } else {
               setTimeout(checkConnection, 100);
@@ -280,94 +419,125 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         });
       }
       
-      console.log(`Starting call to doctor ${doctorId}`);
-      setCallState(prev => ({ ...prev, error: null }));
+      // Initialize media streams BEFORE showing video interface
+      console.log('🎥 Requesting media permissions...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 640, height: 480 }, 
+        audio: true 
+      });
       
-      // Immediately set the call as in progress and start video interface
+      console.log('✅ Media stream obtained successfully');
+      
+      // Set up video interface with media stream
       setCallState(prev => ({ 
         ...prev, 
         isInCall: true, 
-        connectionState: 'new',
-        error: null 
-      }));
-      
-      // Initialize media streams when starting call
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setCallState(prev => ({ 
-        ...prev, 
         localStream: stream,
+        connectionState: 'new',
         isAudioEnabled: true,
-        isVideoEnabled: true
+        isVideoEnabled: true,
+        error: null 
       }));
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        console.log('📹 Local video element set up');
       }
       
       const callId = `call_${userId}_${doctorId}_${Date.now()}`;
-      console.log(`Emitting start-call event with callId: ${callId}`);
+      console.log(`📞 Emitting start-call event with callId: ${callId}`);
       
-      // Ensure socket is still connected before emitting
+      // Final check that socket is still connected before emitting
       if (socketRef.current?.connected) {
         socketRef.current.emit('start-call', {
           to: doctorId,
           from: userId,
           callId,
         });
+        console.log(`✅ Call request sent successfully`);
       } else {
         throw new Error('Lost connection while starting call');
       }
       
     } catch (error) {
-      console.error('Error starting call:', error);
+      console.error('❌ Error starting call:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setCallState(prev => ({ 
         ...prev, 
-        error: 'Failed to access camera/microphone or start call',
+        error: `Failed to start call: ${errorMessage}`,
         isInCall: false 
       }));
+      
+      // Cleanup any partial setup
+      setCallState(prev => {
+        if (prev.localStream) {
+          prev.localStream.getTracks().forEach(track => track.stop());
+        }
+        return { ...prev, localStream: null };
+      });
     }
-  }, [userId, localVideoRef, callState.isConnected]);
+  }, [userId, localVideoRef]);
 
   const acceptCall = useCallback(async () => {
     try {
       if (!incomingCall || !socketRef.current) {
+        console.log('❌ Cannot accept call - no incoming call or socket');
         return;
       }
       
-      // Immediately set the call as in progress and start video interface
+      console.log(`📞 Accepting call from ${incomingCall.from}`);
+      
+      // Initialize media streams BEFORE showing video interface
+      console.log('🎥 Requesting media permissions...');
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 640, height: 480 }, 
+        audio: true 
+      });
+      
+      console.log('✅ Media stream obtained successfully');
+      
+      // Set up video interface with media stream
       setCallState(prev => ({ 
         ...prev, 
         isInCall: true, 
-        connectionState: 'new',
-        error: null 
-      }));
-      
-      // Initialize media streams when accepting call
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      setCallState(prev => ({ 
-        ...prev, 
         localStream: stream,
+        connectionState: 'new',
         isAudioEnabled: true,
-        isVideoEnabled: true
+        isVideoEnabled: true,
+        error: null 
       }));
       
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = stream;
+        console.log('📹 Local video element set up');
       }
       
+      console.log(`✅ Sending accept-call response`);
       socketRef.current.emit('accept-call', {
         callId: incomingCall.callId,
         to: incomingCall.from,
       });
       
       setIncomingCall(null);
+      console.log('🎉 Call accepted successfully');
+      
     } catch (error) {
-      console.error('Error accepting call:', error);
+      console.error('❌ Error accepting call:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       setCallState(prev => ({ 
         ...prev, 
-        error: 'Failed to access camera/microphone or accept call',
+        error: `Failed to accept call: ${errorMessage}`,
         isInCall: false 
       }));
+      
+      // Send rejection if we failed to accept
+      if (incomingCall && socketRef.current) {
+        socketRef.current.emit('reject-call', {
+          callId: incomingCall.callId,
+          to: incomingCall.from,
+        });
+        setIncomingCall(null);
+      }
     }
   }, [incomingCall, localVideoRef]);
 

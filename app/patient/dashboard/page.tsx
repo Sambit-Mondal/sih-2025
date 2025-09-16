@@ -221,14 +221,12 @@ export default function PatientDashboard() {
               {/* Connection Status */}
               <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded-lg">
                 <span className="text-sm">
-                  Status: {
-                    callState.connectionState === 'new' ? 'Starting call...' :
-                    callState.connectionState === 'connecting' ? 'Connecting...' :
-                    callState.connectionState === 'connected' ? 'Connected' :
-                    callState.connectionState === 'disconnected' ? 'Disconnected' :
-                    callState.connectionState === 'failed' ? 'Connection failed' :
-                    'Connecting...'
-                  }
+                  {callState.connectionState === 'new' && '🚀 Starting call...'}
+                  {callState.connectionState === 'connecting' && '🔄 Connecting...'}
+                  {callState.connectionState === 'connected' && '✅ Connected'}
+                  {callState.connectionState === 'disconnected' && '⚠️ Connection lost'}
+                  {callState.connectionState === 'failed' && '❌ Connection failed'}
+                  {!callState.connectionState && '🔄 Initializing...'}
                 </span>
               </div>
             </div>
