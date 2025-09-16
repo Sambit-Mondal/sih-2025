@@ -43,6 +43,7 @@ export default function DoctorDashboard() {
   const {
     callState,
     incomingCall,
+    currentCallParticipant,
     localVideoRef,
     remoteVideoRef,
     acceptCall,
@@ -50,7 +51,7 @@ export default function DoctorDashboard() {
     endCall,
     toggleAudio,
     toggleVideo,
-  } = useWebRTC(user?.id || '', 'doctor');
+  } = useWebRTC(user?.id || '', user?.name || '', 'doctor');
 
   useEffect(() => {
     if (!user || user.role !== 'doctor') {
@@ -237,7 +238,7 @@ export default function DoctorDashboard() {
                 </div>
                 <div className="bg-blue-600 bg-opacity-90 text-white px-3 py-2 rounded-lg">
                   <span className="text-sm font-medium">
-                    Patient: {incomingCall?.fromName || 'Unknown'}
+                    Patient: {currentCallParticipant || incomingCall?.fromName || 'Unknown'}
                   </span>
                 </div>
               </div>

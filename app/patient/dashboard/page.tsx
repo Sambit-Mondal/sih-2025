@@ -42,7 +42,7 @@ export default function PatientDashboard() {
     endCall,
     toggleAudio,
     toggleVideo,
-  } = useWebRTC(user?.id || '', 'patient');
+  } = useWebRTC(user?.id || '', user?.name || '', 'patient');
 
   useEffect(() => {
     if (!user || user.role !== 'patient') {

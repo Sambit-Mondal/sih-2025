@@ -20,7 +20,7 @@ export interface IncomingCall {
   callId: string;
 }
 
-export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
+export const useWebRTC = (userId: string, userName: string, userRole: 'patient' | 'doctor') => {
   const [callState, setCallState] = useState<CallState>({
     isConnected: false,
     isInCall: false,
@@ -33,11 +33,15 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
   });
 
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [currentCallParticipant, setCurrentCallParticipant] = useState<string | null>(null);
   
   const socketRef = useRef<Socket | null>(null);
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  
+  // ICE candidate queue to handle candidates received before remote description is set
+  const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
   // STUN servers configuration
   const iceServers: RTCIceServer[] = useMemo(() => [
@@ -50,11 +54,21 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
     console.log('🧹 Cleaning up call resources');
     
     setCallState(prev => {
+      // Stop local media tracks
       if (prev.localStream) {
         console.log('🔇 Stopping local media tracks');
         prev.localStream.getTracks().forEach(track => {
           track.stop();
-          console.log(`Stopped ${track.kind} track`);
+          console.log(`Stopped local ${track.kind} track`);
+        });
+      }
+      
+      // Stop remote media tracks
+      if (prev.remoteStream) {
+        console.log('🔇 Stopping remote media tracks');
+        prev.remoteStream.getTracks().forEach(track => {
+          track.stop();
+          console.log(`Stopped remote ${track.kind} track`);
         });
       }
       
@@ -75,17 +89,43 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       peerConnectionRef.current = null;
     }
 
+    // Clear video elements
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = null;
+      console.log('📹 Cleared local video element');
     }
     if (remoteVideoRef.current) {
       remoteVideoRef.current.srcObject = null;
+      console.log('📹 Cleared remote video element');
     }
 
+    // Clear ICE candidate queue
+    iceCandidateQueueRef.current = [];
+
     setIncomingCall(null);
+    setCurrentCallParticipant(null);
     
     console.log('✅ Call cleanup completed');
   }, []); // No dependencies to prevent useEffect recreation
+
+  // Helper function to process queued ICE candidates
+  const processQueuedIceCandidates = useCallback(async () => {
+    if (peerConnectionRef.current && peerConnectionRef.current.remoteDescription) {
+      console.log(`🧊 Processing ${iceCandidateQueueRef.current.length} queued ICE candidates`);
+      
+      for (const candidate of iceCandidateQueueRef.current) {
+        try {
+          await peerConnectionRef.current.addIceCandidate(candidate);
+          console.log('✅ Added queued ICE candidate');
+        } catch (error) {
+          console.error('❌ Failed to add queued ICE candidate:', error);
+        }
+      }
+      
+      // Clear the queue after processing
+      iceCandidateQueueRef.current = [];
+    }
+  }, []);
 
   // Get user media
   const getUserMedia = useCallback(async (constraints: MediaStreamConstraints = { video: true, audio: true }) => {
@@ -116,7 +156,10 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
 
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
+        console.log('🧊 Sending local ICE candidate');
         socketRef.current.emit('ice-candidate', event.candidate);
+      } else if (!event.candidate) {
+        console.log('🧊 ICE gathering complete');
       }
     };
 
@@ -185,11 +228,21 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       console.log('🧹 Cleaning up call resources (internal)');
       
       setCallState(prev => {
+        // Stop local media tracks
         if (prev.localStream) {
           console.log('🔇 Stopping local media tracks');
           prev.localStream.getTracks().forEach(track => {
             track.stop();
-            console.log(`Stopped ${track.kind} track`);
+            console.log(`Stopped local ${track.kind} track`);
+          });
+        }
+        
+        // Stop remote media tracks
+        if (prev.remoteStream) {
+          console.log('🔇 Stopping remote media tracks');
+          prev.remoteStream.getTracks().forEach(track => {
+            track.stop();
+            console.log(`Stopped remote ${track.kind} track`);
           });
         }
         
@@ -210,14 +263,21 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         peerConnectionRef.current = null;
       }
 
+      // Clear video elements
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = null;
+        console.log('📹 Cleared local video element');
       }
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = null;
+        console.log('📹 Cleared remote video element');
       }
 
+      // Clear ICE candidate queue
+      iceCandidateQueueRef.current = [];
+
       setIncomingCall(null);
+      setCurrentCallParticipant(null);
       console.log('✅ Call cleanup completed');
     };
 
@@ -252,6 +312,11 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         });
 
         await peerConnection.setRemoteDescription(offer);
+        console.log('✅ Remote description set from offer');
+        
+        // Process any queued ICE candidates now that remote description is set
+        await processQueuedIceCandidates();
+        
         const answer = await peerConnection.createAnswer();
         await peerConnection.setLocalDescription(answer);
         
@@ -268,6 +333,10 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       try {
         if (peerConnectionRef.current) {
           await peerConnectionRef.current.setRemoteDescription(answer);
+          console.log('✅ Remote description set from answer');
+          
+          // Process any queued ICE candidates now that remote description is set
+          await processQueuedIceCandidates();
         }
       } catch (error) {
         console.error('Error handling answer:', error);
@@ -278,16 +347,26 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
     const internalHandleIceCandidate = async (candidate: RTCIceCandidateInit) => {
       try {
         if (peerConnectionRef.current) {
-          await peerConnectionRef.current.addIceCandidate(candidate);
+          // Check if remote description is set
+          if (peerConnectionRef.current.remoteDescription) {
+            console.log('🧊 Adding ICE candidate immediately (remote description set)');
+            await peerConnectionRef.current.addIceCandidate(candidate);
+          } else {
+            console.log('🧊 Queueing ICE candidate (remote description not set)');
+            iceCandidateQueueRef.current.push(candidate);
+          }
+        } else {
+          console.log('🧊 Queueing ICE candidate (no peer connection)');
+          iceCandidateQueueRef.current.push(candidate);
         }
       } catch (error) {
-        console.error('Error handling ICE candidate:', error);
+        console.error('❌ Error handling ICE candidate:', error);
       }
     };
 
     socket.on('connect', () => {
       console.log(`✅ ${userRole} ${userId} connected (${socket.io.engine.transport.name})`);
-      socket.emit('join', { userId, role: userRole });
+      socket.emit('join', { userId, userName, role: userRole });
       setCallState(prev => ({ ...prev, isConnected: true, error: null }));
     });
 
@@ -310,12 +389,13 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
     socket.on('reconnect', (attemptNumber) => {
       console.log(`🔄 ${userRole} ${userId} reconnected after ${attemptNumber} attempts`);
       // Re-join with user info after reconnection
-      socket.emit('join', { userId, role: userRole });
+      socket.emit('join', { userId, userName, role: userRole });
     });
 
     socket.on('incoming-call', (data: IncomingCall) => {
       console.log('📞 Incoming call received:', data);
       setIncomingCall(data);
+      setCurrentCallParticipant(data.fromName); // Store the caller's name
     });
 
     socket.on('call-accepted', async () => {
@@ -384,7 +464,7 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       console.log(`🔌 Cleaning up socket for ${userRole} ${userId}`);
       socket.disconnect();
     };
-  }, [userId, userRole, getUserMedia, initializePeerConnection]); // Added required dependencies
+  }, [userId, userName, userRole, getUserMedia, initializePeerConnection, processQueuedIceCandidates]); // Added required dependencies
 
   const startCall = useCallback(async (doctorId: string) => {
     try {
@@ -555,9 +635,15 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
   }, [incomingCall]);
 
   const endCall = useCallback(() => {
-    if (socketRef.current) {
+    console.log('📞 Ending call - initiating cleanup');
+    
+    // Notify the other participant that we're ending the call
+    if (socketRef.current && socketRef.current.connected) {
+      console.log('📡 Notifying remote participant about call end');
       socketRef.current.emit('end-call');
     }
+    
+    // Perform local cleanup immediately
     cleanupCall();
   }, [cleanupCall]);
 
@@ -584,6 +670,7 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
   return {
     callState,
     incomingCall,
+    currentCallParticipant,
     localVideoRef,
     remoteVideoRef,
     startCall,
