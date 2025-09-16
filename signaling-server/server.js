@@ -59,7 +59,7 @@ io.on('connection', (socket) => {
 
   // Handle user joining (login)
   socket.on('join', (data) => {
-    const { userId, role } = data;
+    const { userId, userName, role } = data;
     
     // Check if user was previously connected (reconnection scenario)
     const existingUser = userRoles.get(userId);
@@ -69,7 +69,8 @@ io.on('connection', (socket) => {
       
       // Update socket ID for existing user
       existingUser.socketId = socket.id;
-      connectedUsers.set(socket.id, { userId, role, socketId: socket.id });
+      existingUser.userName = userName; // Update the user name
+      connectedUsers.set(socket.id, { userId, userName, role, socketId: socket.id });
       
       // Check if they have any active calls
       const activeCall = Array.from(activeCalls.values()).find(call => 
@@ -96,8 +97,8 @@ io.on('connection', (socket) => {
       console.log(`✅ New user ${userId} (${role}) joined with socket ${socket.id}`);
       
       // Store user information
-      connectedUsers.set(socket.id, { userId, role, socketId: socket.id });
-      userRoles.set(userId, { role, socketId: socket.id });
+      connectedUsers.set(socket.id, { userId, userName, role, socketId: socket.id });
+      userRoles.set(userId, { role, userName, socketId: socket.id });
     }
     
     // Join role-specific room
@@ -162,7 +163,7 @@ io.on('connection', (socket) => {
     // Send incoming call notification to the doctor
     io.to(targetUser.socketId).emit('incoming-call', {
       from,
-      fromName: caller.userId, // In production, this would be the user's actual name
+      fromName: caller.userName || caller.userId, // Use userName if available, fallback to userId
       callId
     });
 
