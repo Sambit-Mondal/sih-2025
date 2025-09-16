@@ -197,9 +197,12 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
 
   useEffect(() => {
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
       autoConnect: true,
       timeout: 20000,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
 
     socketRef.current = socket;
@@ -210,14 +213,26 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       setCallState(prev => ({ ...prev, isConnected: true, error: null }));
     });
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from signaling server');
+    socket.on('disconnect', (reason) => {
+      console.log('Disconnected from signaling server:', reason);
       setCallState(prev => ({ ...prev, isConnected: false }));
+      
+      // Don't clean up call state on disconnect - allow reconnection
+      if (reason === 'io client disconnect') {
+        // User intentionally disconnected
+        cleanupCall();
+      }
     });
 
     socket.on('connect_error', (error) => {
       console.error('Connection error:', error);
       setCallState(prev => ({ ...prev, error: 'Failed to connect to server' }));
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('Reconnected to server after', attemptNumber, 'attempts');
+      // Re-join with user info after reconnection
+      socket.emit('join', { userId, role: userRole });
     });
 
     socket.on('incoming-call', (data: IncomingCall) => {
@@ -250,6 +265,21 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         throw new Error('Not connected to server');
       }
       
+      // Wait for stable connection if needed
+      if (!callState.isConnected) {
+        console.log('Waiting for stable connection...');
+        await new Promise((resolve) => {
+          const checkConnection = () => {
+            if (callState.isConnected && socketRef.current?.connected) {
+              resolve(true);
+            } else {
+              setTimeout(checkConnection, 100);
+            }
+          };
+          checkConnection();
+        });
+      }
+      
       console.log(`Starting call to doctor ${doctorId}`);
       setCallState(prev => ({ ...prev, error: null }));
       
@@ -277,11 +307,16 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       const callId = `call_${userId}_${doctorId}_${Date.now()}`;
       console.log(`Emitting start-call event with callId: ${callId}`);
       
-      socketRef.current.emit('start-call', {
-        to: doctorId,
-        from: userId,
-        callId,
-      });
+      // Ensure socket is still connected before emitting
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('start-call', {
+          to: doctorId,
+          from: userId,
+          callId,
+        });
+      } else {
+        throw new Error('Lost connection while starting call');
+      }
       
     } catch (error) {
       console.error('Error starting call:', error);
@@ -291,7 +326,7 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         isInCall: false 
       }));
     }
-  }, [userId, localVideoRef]);
+  }, [userId, localVideoRef, callState.isConnected]);
 
   const acceptCall = useCallback(async () => {
     try {

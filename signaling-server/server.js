@@ -268,18 +268,37 @@ io.on('connection', (socket) => {
   });
 
   // Handle disconnection
-  socket.on('disconnect', () => {
+  socket.on('disconnect', (reason) => {
     const user = connectedUsers.get(socket.id);
-    console.log(`Client disconnected: ${socket.id}`);
+    console.log(`Client disconnected: ${socket.id}, reason: ${reason}`);
     
     if (user) {
       const { userId, role } = user;
       
-      // Remove user from connected users
-      connectedUsers.delete(socket.id);
-      userRoles.delete(userId);
+      console.log(`User ${userId} (${role}) disconnected: ${reason}`);
       
-      // End any active calls for this user
+      // Don't immediately remove user - give them time to reconnect
+      setTimeout(() => {
+        // Check if they reconnected with a different socket
+        const currentUser = userRoles.get(userId);
+        if (!currentUser || currentUser.socketId === socket.id) {
+          // They didn't reconnect, clean up
+          console.log(`🧹 Cleaning up user ${userId} after disconnect timeout`);
+          connectedUsers.delete(socket.id);
+          userRoles.delete(userId);
+          
+          // Notify others in the same role about user status
+          socket.to(role).emit('user-status', {
+            userId,
+            status: 'offline',
+            role
+          });
+        } else {
+          console.log(`✅ User ${userId} already reconnected with socket ${currentUser.socketId}`);
+        }
+      }, 5000); // Give 5 seconds to reconnect
+      
+      // Handle active calls - don't end them immediately
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const activeCall = Array.from(activeCalls.entries()).find(([callId, call]) => 
         call.callerSocket === socket.id || call.calleeSocket === socket.id
@@ -287,27 +306,27 @@ io.on('connection', (socket) => {
       
       if (activeCall) {
         const [callId, call] = activeCall;
-        const targetSocket = call.callerSocket === socket.id 
-          ? call.calleeSocket 
-          : call.callerSocket;
+        console.log(`📞 User in active call ${callId} disconnected, keeping call alive for reconnection`);
         
-        console.log(`Ending call ${callId} due to disconnection`);
-        
-        // Notify the other user
-        io.to(targetSocket).emit('call-ended');
-        
-        // Remove call from active calls
-        activeCalls.delete(callId);
+        // Give them time to reconnect before ending the call
+        setTimeout(() => {
+          if (activeCalls.has(callId)) {
+            const targetSocket = call.callerSocket === socket.id 
+              ? call.calleeSocket 
+              : call.callerSocket;
+            
+            console.log(`❌ Ending call ${callId} due to disconnection timeout`);
+            
+            // Notify the other user
+            io.to(targetSocket).emit('call-ended');
+            
+            // Remove call from active calls
+            activeCalls.delete(callId);
+          } else {
+            console.log(`✅ Call ${callId} was already handled`);
+          }
+        }, 15000); // Give 15 seconds for call reconnection
       }
-      
-      // Notify others in the same role about user status
-      socket.to(role).emit('user-status', {
-        userId,
-        status: 'offline',
-        role
-      });
-      
-      console.log(`User ${userId} (${role}) disconnected`);
     }
   });
 
