@@ -1,0 +1,28 @@
+{
+  "name": "purecure-signaling-server",
+  "version": "1.0.0",
+  "description": "WebRTC signaling server for PureCure video conferencing",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "http": "^0.0.1-security",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "keywords": [
+    "webrtc",
+    "signaling",
+    "video-conference",
+    "healthcare"
+  ],
+  "author": "PureCure Team",
+  "license": "MIT"
+}
