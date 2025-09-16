@@ -83,6 +83,7 @@ io.on('connection', (socket) => {
     const caller = connectedUsers.get(socket.id);
     
     if (!caller) {
+      console.log(`❌ Caller not found for socket ${socket.id}`);
       socket.emit('error', { message: 'User not found' });
       return;
     }
@@ -90,6 +91,15 @@ io.on('connection', (socket) => {
     // Find the target user (doctor)
     const targetUser = userRoles.get(to);
     if (!targetUser) {
+      console.log(`❌ Doctor ${to} not available. Available users:`, Array.from(userRoles.keys()));
+      socket.emit('error', { message: 'Doctor not available' });
+      return;
+    }
+
+    // Check if target socket is still connected
+    const targetSocket = io.sockets.sockets.get(targetUser.socketId);
+    if (!targetSocket) {
+      console.log(`❌ Doctor socket ${targetUser.socketId} is disconnected`);
       socket.emit('error', { message: 'Doctor not available' });
       return;
     }
@@ -104,7 +114,9 @@ io.on('connection', (socket) => {
       startTime: Date.now()
     });
 
-    console.log(`Call initiated: ${from} -> ${to} (${callId})`);
+    console.log(`📞 Call initiated: ${from} -> ${to} (${callId})`);
+    console.log(`   Caller socket: ${socket.id}`);
+    console.log(`   Doctor socket: ${targetUser.socketId}`);
 
     // Send incoming call notification to the doctor
     io.to(targetUser.socketId).emit('incoming-call', {
@@ -112,6 +124,8 @@ io.on('connection', (socket) => {
       fromName: caller.userId, // In production, this would be the user's actual name
       callId
     });
+
+    console.log(`✅ Sent incoming-call to socket ${targetUser.socketId}`);
 
     // Confirm call initiated to patient
     socket.emit('call-initiated', { callId, to });

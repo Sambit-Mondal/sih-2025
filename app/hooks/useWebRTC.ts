@@ -198,7 +198,8 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
   useEffect(() => {
     const socket = io(process.env.NEXT_PUBLIC_SOCKET_URL || 'http://localhost:3001', {
       transports: ['websocket'],
-      forceNew: true,
+      autoConnect: true,
+      timeout: 20000,
     });
 
     socketRef.current = socket;
@@ -210,14 +211,17 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
     });
 
     socket.on('disconnect', () => {
+      console.log('Disconnected from signaling server');
       setCallState(prev => ({ ...prev, isConnected: false }));
     });
 
-    socket.on('connect_error', () => {
+    socket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
       setCallState(prev => ({ ...prev, error: 'Failed to connect to server' }));
     });
 
     socket.on('incoming-call', (data: IncomingCall) => {
+      console.log('Incoming call received:', data);
       setIncomingCall(data);
     });
 
@@ -246,6 +250,7 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
         throw new Error('Not connected to server');
       }
       
+      console.log(`Starting call to doctor ${doctorId}`);
       setCallState(prev => ({ ...prev, error: null }));
       
       // Immediately set the call as in progress and start video interface
@@ -270,6 +275,7 @@ export const useWebRTC = (userId: string, userRole: 'patient' | 'doctor') => {
       }
       
       const callId = `call_${userId}_${doctorId}_${Date.now()}`;
+      console.log(`Emitting start-call event with callId: ${callId}`);
       
       socketRef.current.emit('start-call', {
         to: doctorId,
