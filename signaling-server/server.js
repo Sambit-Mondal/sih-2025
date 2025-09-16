@@ -8,13 +8,13 @@ const server = http.createServer(app);
 
 // Configure CORS for both Express and Socket.IO
 app.use(cors({
-  origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
+  origin: ["https://purecure-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
   credentials: true
 }));
 
 const io = new Server(server, {
   cors: {
-    origin: ["http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
+    origin: ["https://purecure-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
     methods: ["GET", "POST"],
     credentials: true
   }
