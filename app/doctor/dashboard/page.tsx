@@ -26,7 +26,8 @@ import {
   Activity,
   Heart,
   Thermometer,
-  TrendingUp
+  TrendingUp,
+  Brain
 } from 'lucide-react';
 
 interface PrescriptionItem {
@@ -106,11 +107,96 @@ export default function DoctorDashboard() {
   useEffect(() => {
     if (incomingCall && incomingCall.patientReport) {
       setCurrentPatientReport(incomingCall.patientReport);
+      
+      // Auto-populate prescription from AI chatbot report
+      const report = incomingCall.patientReport;
+      const prescriptionItems: PrescriptionItem[] = [];
+      
+      // If the AI generated a prescription, use those medications
+      if (report.prescription && report.prescription.medications) {
+        prescriptionItems.push(...report.prescription.medications.map(med => ({
+          medication: `${med.brandName || med.genericName} ${med.strength}`,
+          dosage: med.dosageForm.charAt(0).toUpperCase() + med.dosageForm.slice(1),
+          frequency: med.frequency,
+          duration: med.duration,
+          instructions: med.instructions
+        })));
+      }
+      
+      // Create comprehensive prescription notes from AI diagnosis
+      let prescriptionNotes = '';
+      
+      // Add primary diagnosis
+      if (report.assessmentSummary) {
+        prescriptionNotes += `DIAGNOSIS: ${report.assessmentSummary.primaryConcern}\n`;
+        prescriptionNotes += `Duration: ${report.assessmentSummary.duration}\n`;
+        prescriptionNotes += `Severity: ${report.assessmentSummary.severity}\n`;
+        prescriptionNotes += `Urgency: ${report.assessmentSummary.urgencyLevel}\n\n`;
+      }
+      
+      // Add detailed symptoms analysis
+      if (report.symptoms) {
+        prescriptionNotes += `SYMPTOMS ANALYSIS:\n`;
+        if (report.symptoms.primary?.length > 0) {
+          prescriptionNotes += `Primary Symptoms: ${report.symptoms.primary.join(', ')}\n`;
+        }
+        if (report.symptoms.secondary?.length > 0) {
+          prescriptionNotes += `Additional Symptoms: ${report.symptoms.secondary.join(', ')}\n`;
+        }
+        if (report.symptoms.painLevel) {
+          prescriptionNotes += `Pain Level: ${report.symptoms.painLevel}/10\n`;
+        }
+        if (report.symptoms.systemsAffected?.length > 0) {
+          prescriptionNotes += `Systems Affected: ${report.symptoms.systemsAffected.join(', ')}\n`;
+        }
+        prescriptionNotes += '\n';
+      }
+      
+      // Add vital signs
+      if (report.vitals) {
+        prescriptionNotes += `VITAL SIGNS:\n`;
+        if (report.vitals.temperature) prescriptionNotes += `Temperature: ${report.vitals.temperature}\n`;
+        if (report.vitals.bloodPressure) prescriptionNotes += `Blood Pressure: ${report.vitals.bloodPressure}\n`;
+        if (report.vitals.heartRate) prescriptionNotes += `Heart Rate: ${report.vitals.heartRate}\n`;
+        prescriptionNotes += `Vital Status: ${report.vitals.status}\n\n`;
+      }
+      
+      // Add risk assessment
+      if (report.riskAssessment) {
+        prescriptionNotes += `RISK ASSESSMENT: ${report.riskAssessment.level.toUpperCase()}\n`;
+        if (report.riskAssessment.factors?.length > 0) {
+          prescriptionNotes += `Risk Factors: ${report.riskAssessment.factors.join(', ')}\n`;
+        }
+        if (report.riskAssessment.redFlags?.length > 0) {
+          prescriptionNotes += `Red Flags: ${report.riskAssessment.redFlags.join(', ')}\n`;
+        }
+        prescriptionNotes += '\n';
+      }
+      
+      // Add AI recommendations
+      if (report.recommendations?.length > 0) {
+        prescriptionNotes += `AI RECOMMENDATIONS:\n`;
+        report.recommendations.forEach((rec, index) => {
+          prescriptionNotes += `${index + 1}. ${rec}\n`;
+        });
+        prescriptionNotes += '\n';
+      }
+      
+      // Add prescription instructions if available
+      if (report.prescription && report.prescription.instructions?.length > 0) {
+        prescriptionNotes += `PRESCRIPTION INSTRUCTIONS:\n`;
+        report.prescription.instructions.forEach((instruction, index) => {
+          prescriptionNotes += `${index + 1}. ${instruction}\n`;
+        });
+      }
+      
       setPrescription(prev => ({
         ...prev,
         id: `PRESC_${Date.now()}`,
-        patientName: incomingCall.patientReport?.patientName || '',
-        date: new Date()
+        patientName: report.patientName || '',
+        date: new Date(),
+        items: prescriptionItems,
+        notes: prescriptionNotes
       }));
     }
   }, [incomingCall]);
@@ -633,6 +719,35 @@ Doctor's Signature: ___________________
                     <div className="flex justify-between items-center">
                       <h3 className="text-lg font-semibold">Digital Prescription</h3>
                       <div className="space-x-2">
+                        {currentPatientReport && currentPatientReport.prescription && (
+                          <button
+                            onClick={() => {
+                              const report = currentPatientReport;
+                              const prescriptionItems: PrescriptionItem[] = [];
+                              
+                              // Populate from AI prescription
+                              if (report.prescription && report.prescription.medications) {
+                                prescriptionItems.push(...report.prescription.medications.map(med => ({
+                                  medication: `${med.brandName || med.genericName} ${med.strength}`,
+                                  dosage: med.dosageForm.charAt(0).toUpperCase() + med.dosageForm.slice(1),
+                                  frequency: med.frequency,
+                                  duration: med.duration,
+                                  instructions: med.instructions
+                                })));
+                              }
+                              
+                              // Update prescription with AI data
+                              setPrescription(prev => ({
+                                ...prev,
+                                items: prescriptionItems
+                              }));
+                            }}
+                            className="inline-flex items-center px-3 py-1 border border-blue-300 text-sm font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100"
+                          >
+                            <Brain className="h-4 w-4 mr-1" />
+                            Use AI Prescription
+                          </button>
+                        )}
                         <button
                           onClick={savePrescription}
                           className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"

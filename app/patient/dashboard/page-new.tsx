@@ -34,6 +34,7 @@ export default function PatientDashboard() {
   const [chatbot, setChatbot] = useState<HealthAssessmentChatbot | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [currentMessage, setCurrentMessage] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedReport, setGeneratedReport] = useState<PatientReport | null>(null);
   const [isTyping, setIsTyping] = useState(false);
 

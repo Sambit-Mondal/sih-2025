@@ -49,6 +49,7 @@ export default function VoicePatientDashboard() {
     confidence: 0,
     error: null
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [generatedReport, setGeneratedReport] = useState<PatientReport | null>(null);
   const [showTranscript, setShowTranscript] = useState(true);
 

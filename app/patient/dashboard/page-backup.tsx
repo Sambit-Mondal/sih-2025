@@ -1,11 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWebRTC } from '../../hooks/useWebRTC';
-import { HealthAssessmentChatbot, ChatMessage, PatientData } from '../../lib/chatbot';
-import { PatientReportGenerator, PatientReport } from '../../lib/reportGenerator';
 import { 
   Heart, 
   Video, 
@@ -19,11 +17,7 @@ import {
   Wifi,
   WifiOff,
   AlertCircle,
-  User,
-  MessageCircle,
-  Send,
-  FileText,
-  Clock
+  User
 } from 'lucide-react';
 
 // Mock doctors data
