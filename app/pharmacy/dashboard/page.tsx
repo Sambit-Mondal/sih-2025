@@ -89,7 +89,7 @@ export default function PharmacyDashboard() {
     { name: 'Inventory', href: '/pharmacy/inventory', icon: Package, active: false },
     { name: 'Sales', href: '/pharmacy/sales', icon: ShoppingCart, active: false },
     { name: 'Prescriptions', href: '/pharmacy/prescriptions', icon: FileText, active: false },
-    { name: 'Customers', href: '/pharmacy/customers', icon: Users, active: false },
+    // { name: 'Customers', href: '/pharmacy/customers', icon: Users, active: false },
     { name: 'Reports', href: '/pharmacy/reports', icon: BarChart, active: false },
     { name: 'Settings', href: '/pharmacy/settings', icon: Settings, active: false }
   ];
@@ -104,12 +104,12 @@ export default function PharmacyDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-200">
       {/* Sidebar */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-64 xl:w-full bg-white shadow-lg transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static`}>
         <div className="flex items-center justify-center h-16 xl:h-20 bg-blue-600 text-white">
           <Package className="h-8 w-8 xl:h-10 xl:w-10 mr-2 xl:mr-3" />
-          <span className="text-xl xl:text-2xl font-bold">PharmaCare</span>
+          <span className="text-xl xl:text-2xl font-bold">Nivaaz+ Pharma</span>
         </div>
 
         <nav className="mt-8 xl:mt-10">
@@ -278,47 +278,162 @@ export default function PharmacyDashboard() {
             <div className="lg:col-span-2 bg-white rounded-xl shadow-sm p-6 xl:p-8 border border-gray-100 hover:shadow-md transition-all duration-200">
               <div className="flex items-center justify-between mb-6 xl:mb-8">
                 <h2 className="text-xl xl:text-2xl font-semibold text-gray-900">Sales Trend (7 Days)</h2>
-                <TrendingUp className="h-6 w-6 xl:h-7 xl:w-7 text-blue-500" />
+                <TrendingUp className="h-6 w-6 xl:h-7 xl:w-7 text-emerald-600" />
               </div>
               
-              <div className="relative h-64 xl:h-80">
-                <div className="absolute inset-0 flex items-end justify-between px-2">
-                  {salesTrendData.map((data) => {
-                    const maxSales = Math.max(...salesTrendData.map(d => d.sales));
-                    const height = (data.sales / maxSales) * 100;
-                    
-                    return (
-                      <div key={data.day} className="flex flex-col items-center flex-1">
-                        <div 
-                          className="bg-blue-500 rounded-t-md w-8 xl:w-10 mx-1 transition-all duration-500 hover:bg-blue-600 cursor-pointer relative group"
-                          style={{ height: `${height}%` }}
-                        >
-                          {/* Tooltip */}
-                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 text-white text-xs xl:text-sm rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-lg">
-                            ₹{data.sales.toLocaleString()}
-                          </div>
-                        </div>
-                        <span className="text-sm xl:text-base text-gray-600 mt-2 xl:mt-3">{data.day}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                
-                {/* Y-axis labels */}
-                <div className="absolute left-0 top-0 h-full flex flex-col justify-between text-xs xl:text-sm text-gray-500 -ml-12 xl:-ml-14">
-                  <span>₹25k</span>
-                  <span>₹20k</span>
-                  <span>₹15k</span>
-                  <span>₹10k</span>
-                  <span>₹5k</span>
-                  <span>₹0</span>
-                </div>
+              <div className="relative h-64 xl:h-80">git addd 
+                {/* SVG Line Chart */}
+                <svg className="w-full h-full" viewBox="0 0 400 200">
+                  {/* Grid lines for better readability */}
+                  <defs>
+                    <pattern id="grid" width="50" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 50 0 L 0 0 0 40" fill="none" stroke="#f3f4f6" strokeWidth="0.5"/>
+                    </pattern>
+                  </defs>
+                  <rect width="100%" height="100%" fill="url(#grid)" />
+                  
+                  {/* Chart area with padding */}
+                  <g transform="translate(40, 20)">
+                    {/* Define chart dimensions */}
+                    {(() => {
+                      const chartWidth = 320;
+                      const chartHeight = 140;
+                      const maxSales = Math.max(...salesTrendData.map(d => d.sales));
+                      const minSales = Math.min(...salesTrendData.map(d => d.sales));
+                      const salesRange = maxSales - minSales;
+                      
+                      // Calculate points for the line
+                      const points = salesTrendData.map((data, index) => {
+                        const x = (index / (salesTrendData.length - 1)) * chartWidth;
+                        const y = chartHeight - ((data.sales - minSales) / salesRange) * chartHeight;
+                        return { x, y, data };
+                      });
+                      
+                      // Create path for the line
+                      const pathData = points.reduce((path, point, index) => {
+                        return path + (index === 0 ? `M ${point.x} ${point.y}` : ` L ${point.x} ${point.y}`);
+                      }, '');
+                      
+                      // Create area path for gradient fill
+                      const areaData = pathData + ` L ${chartWidth} ${chartHeight} L 0 ${chartHeight} Z`;
+                      
+                      return (
+                        <>
+                          {/* Gradient definitions */}
+                          <defs>
+                            <linearGradient id="salesGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                              <stop offset="0%" stopColor="#059669" stopOpacity="0.3"/>
+                              <stop offset="100%" stopColor="#059669" stopOpacity="0.05"/>
+                            </linearGradient>
+                            <linearGradient id="lineGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                              <stop offset="0%" stopColor="#047857"/>
+                              <stop offset="50%" stopColor="#059669"/>
+                              <stop offset="100%" stopColor="#065f46"/>
+                            </linearGradient>
+                          </defs>
+                          
+                          {/* Area fill */}
+                          <path
+                            d={areaData}
+                            fill="url(#salesGradient)"
+                          />
+                          
+                          {/* Main line */}
+                          <path
+                            d={pathData}
+                            fill="none"
+                            stroke="url(#lineGradient)"
+                            strokeWidth="3"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="drop-shadow-sm"
+                          />
+                          
+                          {/* Data points */}
+                          {points.map((point, index) => (
+                            <g key={index}>
+                              {/* Outer circle for better visibility */}
+                              <circle
+                                cx={point.x}
+                                cy={point.y}
+                                r="6"
+                                fill="white"
+                                stroke="#047857"
+                                strokeWidth="2"
+                                className="drop-shadow-sm"
+                              />
+                              {/* Inner circle */}
+                              <circle
+                                cx={point.x}
+                                cy={point.y}
+                                r="3"
+                                fill="#059669"
+                                className="cursor-pointer hover:r-4 transition-all duration-200"
+                              />
+                              
+                              {/* Tooltip on hover */}
+                              <g className="opacity-0 hover:opacity-100 transition-opacity duration-200">
+                                <rect
+                                  x={point.x - 35}
+                                  y={point.y - 35}
+                                  width="70"
+                                  height="25"
+                                  fill="#1f2937"
+                                  rx="4"
+                                  className="drop-shadow-lg"
+                                />
+                                <text
+                                  x={point.x}
+                                  y={point.y - 18}
+                                  textAnchor="middle"
+                                  className="fill-white text-xs font-medium"
+                                >
+                                  ₹{point.data.sales.toLocaleString()}
+                                </text>
+                              </g>
+                            </g>
+                          ))}
+                          
+                          {/* Y-axis labels */}
+                          {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => {
+                            const value = minSales + (salesRange * ratio);
+                            const y = chartHeight - (ratio * chartHeight);
+                            return (
+                              <text
+                                key={index}
+                                x="-10"
+                                y={y + 4}
+                                textAnchor="end"
+                                className="fill-gray-500 text-xs font-medium"
+                              >
+                                ₹{Math.round(value / 1000)}k
+                              </text>
+                            );
+                          })}
+                          
+                          {/* X-axis labels */}
+                          {points.map((point, index) => (
+                            <text
+                              key={index}
+                              x={point.x}
+                              y={chartHeight + 15}
+                              textAnchor="middle"
+                              className="fill-gray-600 text-sm font-medium"
+                            >
+                              {point.data.day}
+                            </text>
+                          ))}
+                        </>
+                      );
+                    })()}
+                  </g>
+                </svg>
               </div>
               
               <div className="mt-4 xl:mt-6 flex items-center justify-center">
                 <div className="flex items-center space-x-4 xl:space-x-6 text-sm xl:text-base">
                   <div className="flex items-center">
-                    <div className="w-3 h-3 xl:w-4 xl:h-4 bg-blue-500 rounded mr-2" />
+                    <div className="w-3 h-3 xl:w-4 xl:h-4 bg-emerald-600 rounded mr-2" />
                     <span className="text-gray-600">Daily Sales</span>
                   </div>
                   <div className="text-gray-500">
