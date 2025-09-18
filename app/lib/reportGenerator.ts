@@ -561,6 +561,15 @@ Generated on: ${new Date().toISOString()}
   }
 
   public generateReportSummary(report: PatientReport): string {
+    const prescriptionSection = report.prescription ? `
+
+PRESCRIPTION GENERATED:
+Prescription ID: ${report.prescription.id}
+Medications Prescribed: ${report.prescription.medications.length}
+${report.prescription.medications.map(med => `• ${med.genericName} ${med.strength} - ${med.frequency} for ${med.duration}`).join('\n')}
+Follow-up Date: ${report.prescription.followUpDate?.toLocaleDateString() || 'As needed'}
+` : '\nNO PRESCRIPTION - Refer to qualified medical professional for treatment';
+
     return `
 PATIENT HEALTH ASSESSMENT REPORT
 ================================
@@ -591,6 +600,7 @@ ${report.riskAssessment.redFlags.length > 0 ? `Red Flags: ${report.riskAssessmen
 
 RECOMMENDATIONS:
 ${report.recommendations.map(rec => `• ${rec}`).join('\n')}
+${prescriptionSection}
     `.trim();
   }
 }
