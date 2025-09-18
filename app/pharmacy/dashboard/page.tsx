@@ -6,7 +6,6 @@ import { useAuth } from '../../contexts/AuthContext';
 import Link from 'next/link';
 import {
   Package,
-  Users,
   ShoppingCart,
   FileText,
   BarChart,
