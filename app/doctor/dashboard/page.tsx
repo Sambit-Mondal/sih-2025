@@ -148,10 +148,76 @@ export default function DoctorDashboard() {
     }));
   };
 
-  const savePrescription = () => {
-    // In a real app, this would save to a database
-    console.log('Saving prescription:', prescription);
-    alert('Prescription saved successfully!');
+  const savePrescription = async () => {
+    if (!user) {
+      alert('User not authenticated. Please log in again.');
+      return;
+    }
+    
+    try {
+      // Import the pharmacy service
+      const { PharmacyService } = await import('../../lib/pharmacyService');
+      
+      // Show loading state
+      const loadingAlert = document.createElement('div');
+      loadingAlert.innerHTML = 'Sending prescription to pharmacy...';
+      loadingAlert.className = 'fixed top-4 right-4 bg-blue-500 text-white p-3 rounded shadow-lg z-50';
+      document.body.appendChild(loadingAlert);
+      
+      // Send to pharmacy
+      const result = await PharmacyService.sendPrescriptionToPharmacy({
+        patientName: prescription.patientName,
+        doctorName: prescription.doctorName,
+        doctorId: user.id || 'DOC001',
+        medications: prescription.items,
+        notes: prescription.notes,
+        priority: prescription.items.some(item => 
+          item.instructions.toLowerCase().includes('urgent') ||
+          item.instructions.toLowerCase().includes('emergency')
+        ) ? 'urgent' : 'medium'
+      });
+      
+      // Remove loading alert
+      document.body.removeChild(loadingAlert);
+      
+      if (result.success) {
+        // Show success message with prescription ID
+        const successDiv = document.createElement('div');
+        successDiv.innerHTML = `
+          <div class="bg-green-500 text-white p-4 rounded-lg shadow-lg">
+            <h3 class="font-bold">✅ Prescription Sent Successfully!</h3>
+            <p class="mt-2">${result.message}</p>
+            <p class="text-sm mt-1 opacity-90">The pharmacy will be notified immediately.</p>
+          </div>
+        `;
+        successDiv.className = 'fixed top-4 right-4 z-50';
+        document.body.appendChild(successDiv);
+        
+        // Auto-remove success message after 5 seconds
+        setTimeout(() => {
+          if (document.body.contains(successDiv)) {
+            document.body.removeChild(successDiv);
+          }
+        }, 5000);
+        
+        // Reset prescription form for next patient
+        setPrescription({
+          id: '',
+          patientName: '',
+          doctorName: user.name || '',
+          date: new Date(),
+          items: [],
+          notes: ''
+        });
+        
+      } else {
+        alert(`Failed to send prescription: ${result.message}`);
+      }
+      
+    } catch (error) {
+      console.error('Error sending prescription to pharmacy:', error);
+      alert('Failed to send prescription to pharmacy. Please try again.');
+    }
   };
 
   const printPrescription = () => {
@@ -569,10 +635,10 @@ Doctor's Signature: ___________________
                       <div className="space-x-2">
                         <button
                           onClick={savePrescription}
-                          className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+                          className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
                         >
                           <Save className="h-4 w-4 mr-1" />
-                          Save
+                          Send to Pharmacy
                         </button>
                         <button
                           onClick={printPrescription}

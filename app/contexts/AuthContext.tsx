@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type UserRole = 'patient' | 'doctor';
+export type UserRole = 'patient' | 'doctor' | 'pharmacist';
 
 export interface User {
   id: string;
@@ -31,6 +31,10 @@ const mockUsers: User[] = [
   { id: '4', name: 'Dr. Sarah Wilson', email: 'doctor1@example.com', role: 'doctor' },
   { id: '5', name: 'Dr. Robert Brown', email: 'doctor2@example.com', role: 'doctor' },
   { id: '6', name: 'Dr. Emily Davis', email: 'doctor3@example.com', role: 'doctor' },
+  
+  // Pharmacists
+  { id: '7', name: 'Alex Johnson', email: 'pharmacist@example.com', role: 'pharmacist' },
+  { id: '8', name: 'Sarah Miller', email: 'pharmacy.manager@example.com', role: 'pharmacist' },
 ];
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {

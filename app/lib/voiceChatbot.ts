@@ -4,13 +4,6 @@
 import { PatientData, ConversationState, ChatMessage } from './chatbot';
 import { GroqVoiceQuestionGenerator, PatientContext } from './groqVoiceQuestionGenerator';
 
-// Type declarations for Web Speech API
-declare global {
-    interface Window {
-        SpeechRecognition: new () => unknown;
-        webkitSpeechRecognition: new () => unknown;
-    }
-}
 
 export interface VoiceSettings {
     language: string;
@@ -196,8 +189,7 @@ export class VoiceHealthAssessmentChatbot {
             this.checkGroqAPIStatus();
 
             // Initialize Speech Recognition with optimal settings
-            const SpeechRecognitionClass = (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).SpeechRecognition ||
-                (window as unknown as { SpeechRecognition?: unknown; webkitSpeechRecognition?: unknown }).webkitSpeechRecognition;
+            const SpeechRecognitionClass = (window as Window).SpeechRecognition || (window as Window).webkitSpeechRecognition;
             this.recognition = new (SpeechRecognitionClass as new () => unknown)();
 
             const recognitionInstance = this.recognition as {
@@ -304,24 +296,24 @@ export class VoiceHealthAssessmentChatbot {
         };
 
         recognitionInstance.onerror = (event: { error: string }) => {
-      // Handle different types of speech recognition events appropriately
-      switch (event.error) {
-        case 'no-speech':
-          // This is normal - user just didn't speak within the timeout
-          console.log('👂 Listening for speech... (no speech detected, continuing to listen)');
-          
-          // Provide occasional helpful prompts instead of errors
-          if (Math.random() > 0.7) { // 30% chance to show helpful message
-            this.voiceState.error = 'Take your time - I\'m listening for your response...';
-          } else {
-            this.voiceState.error = null;
-          }
-          
-          this.voiceState.isListening = false;
-          this.updateVoiceState();
-          // Restart listening after a short delay
-          setTimeout(() => this.startListening(), 500);
-          break;                case 'audio-capture':
+            // Handle different types of speech recognition events appropriately
+            switch (event.error) {
+                case 'no-speech':
+                    // This is normal - user just didn't speak within the timeout
+                    console.log('👂 Listening for speech... (no speech detected, continuing to listen)');
+
+                    // Provide occasional helpful prompts instead of errors
+                    if (Math.random() > 0.7) { // 30% chance to show helpful message
+                        this.voiceState.error = 'Take your time - I\'m listening for your response...';
+                    } else {
+                        this.voiceState.error = null;
+                    }
+
+                    this.voiceState.isListening = false;
+                    this.updateVoiceState();
+                    // Restart listening after a short delay
+                    setTimeout(() => this.startListening(), 500);
+                    break; case 'audio-capture':
                     console.warn('🎤 Audio capture issue - restarting speech recognition');
                     this.voiceState.error = 'Microphone access issue - retrying...';
                     this.voiceState.isListening = false;
@@ -457,14 +449,14 @@ export class VoiceHealthAssessmentChatbot {
                 this.state.isComplete = true;
                 this.state.patientData.completedAt = new Date();
                 console.log('Assessment completed. Current step:', this.state.currentStep, 'Total steps:', VOICE_CONVERSATION_STEPS.length);
-                
+
                 this.speakResponse("Thank you for providing all the information. I'm now preparing your health assessment report and connecting you with a doctor. Please wait a moment.", false);
 
                 // Notify UI about completion after speaking ends
                 setTimeout(() => {
                     this.voiceState.isProcessing = false;
                     this.updateVoiceState();
-                    
+
                     // Add a completion message to conversation history
                     const completionMessage: VoiceMessage = {
                         id: `system_${Date.now()}`,
@@ -474,10 +466,10 @@ export class VoiceHealthAssessmentChatbot {
                     };
                     this.state.conversationHistory.push(completionMessage);
                     this.updateMessages();
-                    
+
                     console.log('Conversation marked as complete. IsComplete:', this.state.isComplete);
                 }, 1000);
-                
+
                 return;
             }
 
@@ -511,7 +503,7 @@ export class VoiceHealthAssessmentChatbot {
             } else {
                 this.state.isComplete = true;
                 this.speakResponse("Thank you for the information. I'm preparing your health report now.", false);
-                
+
                 // Add completion logic for fallback scenario too
                 setTimeout(() => {
                     this.voiceState.isProcessing = false;
@@ -584,7 +576,7 @@ export class VoiceHealthAssessmentChatbot {
                     this.voiceState.error = null; // Don't treat as error
                     this.updateVoiceState();
                     break;
-                    
+
                 case 'canceled':
                     // User or system canceled speech
                     console.log('🗣️ Speech canceled');
@@ -592,7 +584,7 @@ export class VoiceHealthAssessmentChatbot {
                     this.voiceState.error = null; // Don't treat as error
                     this.updateVoiceState();
                     break;
-                    
+
                 case 'not-allowed':
                     // Audio permissions issue
                     console.error('🔊 Audio output not allowed');
@@ -600,7 +592,7 @@ export class VoiceHealthAssessmentChatbot {
                     this.voiceState.error = 'Audio output permission required';
                     this.updateVoiceState();
                     break;
-                    
+
                 case 'network':
                     // Network related speech synthesis issue
                     console.warn('🌐 Network error in speech synthesis');
@@ -608,7 +600,7 @@ export class VoiceHealthAssessmentChatbot {
                     this.voiceState.error = 'Network issue with speech - retrying...';
                     this.updateVoiceState();
                     break;
-                    
+
                 default:
                     // Other errors - log but don't necessarily show to user
                     console.warn('Speech synthesis issue:', event.error);
@@ -759,54 +751,54 @@ export class VoiceHealthAssessmentChatbot {
         }
     }
 
-  public startListening(): void {
-    if (!this.recognition) {
-      console.warn('🎤 Speech recognition not initialized');
-      return;
-    }
+    public startListening(): void {
+        if (!this.recognition) {
+            console.warn('🎤 Speech recognition not initialized');
+            return;
+        }
 
-    if (!this.voiceState.hasPermission) {
-      console.warn('🚫 Microphone permission not granted');
-      return;
-    }
+        if (!this.voiceState.hasPermission) {
+            console.warn('🚫 Microphone permission not granted');
+            return;
+        }
 
-    if (this.voiceState.isListening) {
-      console.log('👂 Already listening for speech');
-      return;
-    }
+        if (this.voiceState.isListening) {
+            console.log('👂 Already listening for speech');
+            return;
+        }
 
-    if (this.voiceState.isSpeaking) {
-      console.log('🗣️ Currently speaking, will start listening after speech ends');
-      return;
-    }
+        if (this.voiceState.isSpeaking) {
+            console.log('🗣️ Currently speaking, will start listening after speech ends');
+            return;
+        }
 
-    try {
-      console.log('🎤 Starting speech recognition...');
-      const recognitionInstance = this.recognition as { start(): void };
-      recognitionInstance.start();
-      
-      // Clear any previous "no-speech" related messages
-      if (this.voiceState.error === null || this.voiceState.error.includes('no speech detected')) {
-        this.voiceState.error = null;
-        this.updateVoiceState();
-      }
-      
-    } catch (error) {
-      console.error('❌ Failed to start speech recognition:', error);
-      this.voiceState.error = 'Failed to start listening. Please try again.';
-      this.updateVoiceState();
-    }
-  }    public stopListening(): void {
+        try {
+            console.log('🎤 Starting speech recognition...');
+            const recognitionInstance = this.recognition as { start(): void };
+            recognitionInstance.start();
+
+            // Clear any previous "no-speech" related messages
+            if (this.voiceState.error === null || this.voiceState.error.includes('no speech detected')) {
+                this.voiceState.error = null;
+                this.updateVoiceState();
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to start speech recognition:', error);
+            this.voiceState.error = 'Failed to start listening. Please try again.';
+            this.updateVoiceState();
+        }
+    } public stopListening(): void {
         if (this.recognition && this.voiceState.isListening) {
             const recognitionInstance = this.recognition as { stop(): void };
             recognitionInstance.stop();
         }
     }
 
-    public async startConversation(): Promise<VoiceMessage> {        
+    public async startConversation(): Promise<VoiceMessage> {
         try {
             console.log('Starting voice conversation...');
-            
+
             // Generate initial question using Groq
             const patientContext: PatientContext = {
                 name: this.state.patientData.name || 'Patient',
@@ -815,14 +807,14 @@ export class VoiceHealthAssessmentChatbot {
             };
 
             const initialQuestion = await this.questionGenerator.generateNextQuestion(patientContext);
-            
+
             // speakResponse already adds the message to conversationHistory, so we don't need to return a new one
             this.speakResponse(initialQuestion.question, true);
 
             // Return the message that was just added to history
             const lastMessage = this.state.conversationHistory[this.state.conversationHistory.length - 1];
             return lastMessage as VoiceMessage;
-            
+
         } catch (error) {
             console.error('Error generating initial question:', error);
 
