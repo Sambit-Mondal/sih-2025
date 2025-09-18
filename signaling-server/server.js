@@ -119,9 +119,9 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Handle call initiation (patient starts call)
+  // Handle call initiation (patient starts call with optional patient report)
   socket.on('start-call', (data) => {
-    const { to, from, callId } = data;
+    const { to, from, callId, patientReport } = data;
     const caller = connectedUsers.get(socket.id);
     
     if (!caller) {
@@ -146,25 +146,30 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Store call information
+    // Store call information including patient report
     activeCalls.set(callId, {
       caller: from,
       callee: to,
       callerSocket: socket.id,
       calleeSocket: targetUser.socketId,
       status: 'ringing',
-      startTime: Date.now()
+      startTime: Date.now(),
+      patientReport: patientReport || null
     });
 
     console.log(`📞 Call initiated: ${from} -> ${to} (${callId})`);
     console.log(`   Caller socket: ${socket.id}`);
     console.log(`   Doctor socket: ${targetUser.socketId}`);
+    if (patientReport) {
+      console.log(`   Patient report included: ${patientReport.assessmentSummary.primaryConcern}`);
+    }
 
-    // Send incoming call notification to the doctor
+    // Send incoming call notification to the doctor with patient report
     io.to(targetUser.socketId).emit('incoming-call', {
       from,
       fromName: caller.userName || caller.userId, // Use userName if available, fallback to userId
-      callId
+      callId,
+      patientReport: patientReport || null
     });
 
     console.log(`✅ Sent incoming-call to socket ${targetUser.socketId}`);

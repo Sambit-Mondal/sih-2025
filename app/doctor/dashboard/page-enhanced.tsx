@@ -7,7 +7,6 @@ import { useWebRTC } from '../../hooks/useWebRTC';
 import { PatientReport } from '../../lib/reportGenerator';
 import { 
   Shield, 
-  Video, 
   Phone, 
   PhoneOff, 
   Mic, 
@@ -17,10 +16,8 @@ import {
   LogOut,
   Wifi,
   WifiOff,
-  AlertCircle,
   User,
   Clock,
-  Calendar,
   Users,
   FileText,
   Edit3,
@@ -112,7 +109,7 @@ export default function DoctorDashboard() {
       setPrescription(prev => ({
         ...prev,
         id: `PRESC_${Date.now()}`,
-        patientName: incomingCall.patientReport.patientName,
+        patientName: incomingCall.patientReport?.patientName || '',
         date: new Date()
       }));
     }
@@ -282,7 +279,7 @@ Doctor's Signature: ___________________
               {/* Upcoming Appointments */}
               <div className="bg-white rounded-lg shadow">
                 <div className="px-6 py-4 border-b border-gray-200">
-                  <h3 className="text-lg font-medium text-gray-900">Today's Schedule</h3>
+                  <h3 className="text-lg font-medium text-gray-900">Today&apos;s Schedule</h3>
                 </div>
                 <div className="p-6">
                   <div className="space-y-3">
@@ -302,7 +299,7 @@ Doctor's Signature: ___________________
 
               {/* Statistics */}
               <div className="bg-white rounded-lg shadow p-6">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Today's Overview</h3>
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Today&apos;s Overview</h3>
                 <div className="space-y-3">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-500">Patients Seen</span>
@@ -710,7 +707,7 @@ Doctor's Signature: ___________________
               <Phone className="h-12 w-12 text-blue-600 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">Incoming Patient Call</h3>
               <p className="text-sm text-gray-600 mb-2">
-                {incomingCall.callerName} is requesting a consultation
+                {incomingCall.fromName} is requesting a consultation
               </p>
               {incomingCall.patientReport && (
                 <div className="mb-4 p-3 bg-blue-50 rounded-lg text-left">

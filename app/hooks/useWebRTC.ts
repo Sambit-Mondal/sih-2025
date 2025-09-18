@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { PatientReport } from '../lib/reportGenerator';
 
 export interface CallState {
   isConnected: boolean;
@@ -18,6 +19,7 @@ export interface IncomingCall {
   from: string;
   fromName: string;
   callId: string;
+  patientReport?: PatientReport | null;
 }
 
 export const useWebRTC = (userId: string, userName: string, userRole: 'patient' | 'doctor') => {
@@ -466,13 +468,16 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     };
   }, [userId, userName, userRole, getUserMedia, initializePeerConnection, processQueuedIceCandidates]); // Added required dependencies
 
-  const startCall = useCallback(async (doctorId: string) => {
+  const startCall = useCallback(async (doctorId: string, patientReport?: PatientReport) => {
     try {
       if (!socketRef.current) {
         throw new Error('Not connected to server');
       }
       
       console.log(`🚀 Starting call to doctor ${doctorId}`);
+      if (patientReport) {
+        console.log(`📋 Including patient report: ${patientReport.assessmentSummary.primaryConcern}`);
+      }
       setCallState(prev => ({ ...prev, error: null }));
       
       // Check current socket connection status directly
@@ -533,6 +538,7 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
           to: doctorId,
           from: userId,
           callId,
+          patientReport: patientReport || null
         });
         console.log(`✅ Call request sent successfully`);
       } else {
