@@ -1,4 +1,4 @@
-# PureCure - 1:1 Video Conferencing Platform
+# Nivaaz+ - 1:1 Video Conferencing Platform
 
 A production-ready video conferencing platform built with Next.js 15, TypeScript, WebRTC, and Socket.IO for secure healthcare consultations between patients and doctors.
 

@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "PureCure - Secure Video Consultations",
+  title: "Nivaaz+ - Secure Video Consultations",
   description: "Connect patients and doctors through secure, high-quality video conferencing",
 };
 

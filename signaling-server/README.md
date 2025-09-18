@@ -1,6 +1,6 @@
-# PureCure Signaling Server
+# Nivaaz+ Signaling Server
 
-A WebRTC signaling server for the PureCure video conferencing platform.
+A WebRTC signaling server for the Nivaaz+ video conferencing platform.
 
 ## Features
 

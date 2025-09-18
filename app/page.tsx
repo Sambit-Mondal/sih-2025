@@ -12,7 +12,7 @@ const Home = () => {
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
               <Video className="h-8 w-8 text-indigo-600" />
-              <span className="ml-2 text-2xl font-bold text-gray-900">PureCure</span>
+              <span className="ml-2 text-2xl font-bold text-gray-900">Nivaaz+</span>
             </div>
           </div>
         </div>

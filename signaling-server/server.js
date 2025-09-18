@@ -8,13 +8,13 @@ const server = http.createServer(app);
 
 // Configure CORS for both Express and Socket.IO
 app.use(cors({
-  origin: ["https://purecure-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
+  origin: ["https://Nivaaz+-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
   credentials: true
 }));
 
 const io = new Server(server, {
   cors: {
-    origin: ["https://purecure-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
+    origin: ["https://Nivaaz+-zeta.vercel.app", "https://sih-2025-server.vercel.app", "http://localhost:3000", "http://localhost:3001", "http://localhost:3002", "http://127.0.0.1:3000", "http://127.0.0.1:3002"],
     methods: ["GET", "POST"],
     credentials: true
   },
@@ -37,7 +37,7 @@ const activeCalls = new Map();
 
 app.get('/', (req, res) => {
   res.json({ 
-    message: 'PureCure WebRTC Signaling Server is running',
+    message: 'Nivaaz+ WebRTC Signaling Server is running',
     status: 'active',
     connectedUsers: connectedUsers.size,
     activeCalls: activeCalls.size
@@ -385,7 +385,7 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
-  console.log(`🚀 PureCure Signaling Server running on port ${PORT}`);
+  console.log(`🚀 Nivaaz+ Signaling Server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/health`);
   console.log(`🌍 CORS enabled for: http://localhost:3000`);
 });

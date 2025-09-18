@@ -458,7 +458,7 @@ export class PatientReportGenerator {
       patientGender: (patientData.gender as 'M' | 'F' | 'O') || 'O',
       doctorName: 'Dr. AI Assistant',
       doctorLicense: 'AI-ASSIST-2024',
-      clinicName: 'PureCure Telemedicine',
+      clinicName: 'Nivaaz+ Telemedicine',
       clinicAddress: 'Virtual Health Platform',
       prescriptionDate: new Date(),
       medications: uniqueMedications,

@@ -1,7 +1,7 @@
 {
-  "name": "purecure-signaling-server",
+  "name": "Nivaaz+-signaling-server",
   "version": "1.0.0",
-  "description": "WebRTC signaling server for PureCure video conferencing",
+  "description": "WebRTC signaling server for Nivaaz+ video conferencing",
   "main": "server.js",
   "type": "module",
   "scripts": {
@@ -23,6 +23,6 @@
     "video-conference",
     "healthcare"
   ],
-  "author": "PureCure Team",
+  "author": "Nivaaz+ Team",
   "license": "MIT"
 }
