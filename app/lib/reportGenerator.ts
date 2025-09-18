@@ -13,6 +13,38 @@ export interface PatientReport {
   recommendations: string[];
   conversationLog: ChatMessage[];
   vitals: VitalSigns;
+  prescription?: MedicalPrescription;
+}
+
+export interface MedicalPrescription {
+  id: string;
+  patientName: string;
+  patientAge: number;
+  patientGender: 'M' | 'F' | 'O';
+  doctorName: string;
+  doctorLicense: string;
+  clinicName: string;
+  clinicAddress: string;
+  prescriptionDate: Date;
+  medications: PrescribedMedication[];
+  diagnosis: string;
+  instructions: string[];
+  followUpDate?: Date;
+  emergencyContact?: string;
+}
+
+export interface PrescribedMedication {
+  genericName: string;
+  brandName?: string;
+  strength: string;
+  dosageForm: 'tablet' | 'capsule' | 'syrup' | 'injection' | 'cream' | 'drops' | 'inhaler';
+  quantity: number;
+  frequency: string;
+  duration: string;
+  instructions: string;
+  beforeFood?: boolean;
+  afterFood?: boolean;
+  substitutable: boolean;
 }
 
 export interface AssessmentSummary {
@@ -62,6 +94,66 @@ const SYMPTOM_SYSTEMS: { [key: string]: string } = {
   'fatigue': 'General'
 };
 
+// Common medications database for prescription generation
+const COMMON_MEDICATIONS: { [key: string]: PrescribedMedication[] } = {
+  'fever': [
+    {
+      genericName: 'Paracetamol',
+      brandName: 'Crocin',
+      strength: '500mg',
+      dosageForm: 'tablet',
+      quantity: 10,
+      frequency: 'TDS (Three times daily)',
+      duration: '3-5 days',
+      instructions: 'Take with water when fever persists',
+      afterFood: true,
+      substitutable: true
+    }
+  ],
+  'cough': [
+    {
+      genericName: 'Dextromethorphan',
+      brandName: 'Benadryl',
+      strength: '10mg/5ml',
+      dosageForm: 'syrup',
+      quantity: 100,
+      frequency: 'TDS',
+      duration: '5-7 days',
+      instructions: 'Take 2 teaspoons three times daily',
+      afterFood: true,
+      substitutable: true
+    }
+  ],
+  'headache': [
+    {
+      genericName: 'Ibuprofen',
+      brandName: 'Brufen',
+      strength: '400mg',
+      dosageForm: 'tablet',
+      quantity: 6,
+      frequency: 'BD (Twice daily)',
+      duration: '3 days',
+      instructions: 'Take only when needed for pain',
+      afterFood: true,
+      substitutable: true
+    }
+  ],
+  'abdominal pain': [
+    {
+      genericName: 'Dicyclomine',
+      brandName: 'Cyclopam',
+      strength: '10mg',
+      dosageForm: 'tablet',
+      quantity: 10,
+      frequency: 'TDS',
+      duration: '3-5 days',
+      instructions: 'Take for abdominal cramps and pain',
+      beforeFood: true,
+      substitutable: true
+    }
+  ]
+};
+
 const RED_FLAG_SYMPTOMS = [
   'severe chest pain',
   'difficulty breathing',
@@ -91,6 +183,7 @@ export class PatientReportGenerator {
     const vitals = this.analyzeVitals(patientData);
     const assessmentSummary = this.generateAssessmentSummary(patientData, riskAssessment);
     const recommendations = this.generateRecommendations(riskAssessment, symptoms);
+    const prescription = this.generatePrescription(patientData, symptoms, riskAssessment);
 
     const report: PatientReport = {
       id: reportId,
@@ -101,7 +194,8 @@ export class PatientReportGenerator {
       riskAssessment,
       recommendations,
       conversationLog: conversationHistory,
-      vitals
+      vitals,
+      prescription
     };
 
     return report;
@@ -321,6 +415,149 @@ export class PatientReportGenerator {
     }
 
     return recommendations;
+  }
+
+  private generatePrescription(patientData: PatientData, symptoms: SymptomAnalysis, riskAssessment: RiskAssessment): MedicalPrescription | undefined {
+    // Only generate prescription for low to medium risk cases
+    // High/critical cases should be referred to medical professionals
+    if (riskAssessment.level === 'high' || riskAssessment.level === 'critical') {
+      return undefined;
+    }
+
+    const prescriptionId = `RX_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    const medications: PrescribedMedication[] = [];
+    
+    // Generate medications based on primary symptoms
+    symptoms.primary.forEach(symptom => {
+      const symptomKey = symptom.toLowerCase();
+      Object.keys(COMMON_MEDICATIONS).forEach(key => {
+        if (symptomKey.includes(key) && COMMON_MEDICATIONS[key]) {
+          medications.push(...COMMON_MEDICATIONS[key]);
+        }
+      });
+    });
+
+    // Remove duplicates and limit to 3 medications for safety
+    const uniqueMedications = medications
+      .filter((med, index, self) => 
+        index === self.findIndex(m => m.genericName === med.genericName)
+      )
+      .slice(0, 3);
+
+    if (uniqueMedications.length === 0) {
+      return undefined;
+    }
+
+    // Generate diagnosis from primary concern
+    const diagnosis = `${symptoms.primary.join(', ')} - Symptomatic treatment prescribed based on patient history and examination.`;
+
+    const prescription: MedicalPrescription = {
+      id: prescriptionId,
+      patientName: patientData.name,
+      patientAge: patientData.age || 30,
+      patientGender: (patientData.gender as 'M' | 'F' | 'O') || 'O',
+      doctorName: 'Dr. AI Assistant',
+      doctorLicense: 'AI-ASSIST-2024',
+      clinicName: 'PureCure Telemedicine',
+      clinicAddress: 'Virtual Health Platform',
+      prescriptionDate: new Date(),
+      medications: uniqueMedications,
+      diagnosis,
+      instructions: [
+        'Take medications as prescribed',
+        'Complete the full course of treatment',
+        'Consult a doctor if symptoms worsen',
+        'Return for follow-up if symptoms persist beyond prescribed duration',
+        'Keep prescription for future reference'
+      ],
+      followUpDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      emergencyContact: '911 or local emergency services'
+    };
+
+    return prescription;
+  }
+
+  public generatePrescriptionDocument(prescription: MedicalPrescription): string {
+    const formatDate = (date: Date) => date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    return `
+╔════════════════════════════════════════════════════════════════════════════════╗
+║                              MEDICAL PRESCRIPTION                              ║
+╚════════════════════════════════════════════════════════════════════════════════╝
+
+${prescription.clinicName.toUpperCase()}
+${prescription.clinicAddress}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRESCRIPTION ID: ${prescription.id}
+DATE: ${formatDate(prescription.prescriptionDate)}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PATIENT INFORMATION:
+   Name: ${prescription.patientName}
+   Age: ${prescription.patientAge} years
+   Gender: ${prescription.patientGender === 'M' ? 'Male' : prescription.patientGender === 'F' ? 'Female' : 'Other'}
+
+DOCTOR INFORMATION:
+   Name: ${prescription.doctorName}
+   License: ${prescription.doctorLicense}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+DIAGNOSIS:
+${prescription.diagnosis}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+PRESCRIBED MEDICATIONS:
+
+${prescription.medications.map((med, index) => `
+${index + 1}. ${med.brandName ? `${med.brandName} (${med.genericName})` : med.genericName}
+   ├─ Strength: ${med.strength}
+   ├─ Form: ${med.dosageForm.charAt(0).toUpperCase() + med.dosageForm.slice(1)}
+   ├─ Quantity: ${med.quantity}
+   ├─ Frequency: ${med.frequency}
+   ├─ Duration: ${med.duration}
+   ├─ Instructions: ${med.instructions}
+   ├─ Timing: ${med.beforeFood ? 'Before food' : med.afterFood ? 'After food' : 'With or without food'}
+   └─ Substitution: ${med.substitutable ? 'Allowed' : 'Not allowed'}
+`).join('')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+GENERAL INSTRUCTIONS:
+${prescription.instructions.map(instruction => `• ${instruction}`).join('\n')}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FOLLOW-UP:
+${prescription.followUpDate ? `Recommended follow-up date: ${formatDate(prescription.followUpDate)}` : 'Follow-up as needed'}
+
+EMERGENCY CONTACT: ${prescription.emergencyContact || 'Contact your healthcare provider'}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+                               Doctor's Signature
+                              ${prescription.doctorName}
+                              License: ${prescription.doctorLicense}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+IMPORTANT NOTES:
+• This prescription is generated by an AI system for symptomatic relief
+• For serious conditions, please consult a qualified medical professional
+• Keep this prescription for your medical records
+• Report any adverse reactions to your healthcare provider immediately
+
+Generated on: ${new Date().toISOString()}
+    `.trim();
   }
 
   public generateReportSummary(report: PatientReport): string {
