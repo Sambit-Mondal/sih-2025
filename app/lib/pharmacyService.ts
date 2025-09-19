@@ -42,7 +42,7 @@ const mockPrescriptions: PharmacyPrescription[] = [
   {
     id: 'RX001',
     patientName: 'John Smith',
-    doctorName: 'Dr. Sarah Johnson',
+    doctorName: 'Sarah Johnson',
     doctorId: 'DOC001',
     date: new Date(),
     medications: [
