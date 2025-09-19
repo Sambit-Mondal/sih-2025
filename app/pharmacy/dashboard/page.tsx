@@ -280,7 +280,7 @@ export default function PharmacyDashboard() {
                 <TrendingUp className="h-6 w-6 xl:h-7 xl:w-7 text-emerald-600" />
               </div>
               
-              <div className="relative h-64 xl:h-80">git addd 
+              <div className="relative h-64 xl:h-80">
                 {/* SVG Line Chart */}
                 <svg className="w-full h-full" viewBox="0 0 400 200">
                   {/* Grid lines for better readability */}
