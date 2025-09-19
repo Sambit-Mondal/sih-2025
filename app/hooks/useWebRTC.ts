@@ -45,11 +45,64 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
   // ICE candidate queue to handle candidates received before remote description is set
   const iceCandidateQueueRef = useRef<RTCIceCandidateInit[]>([]);
 
-  // STUN servers configuration
-  const iceServers: RTCIceServer[] = useMemo(() => [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-  ], []);
+  // STUN/TURN servers configuration for cross-network connectivity
+  const iceServers: RTCIceServer[] = useMemo(() => {
+    const servers: RTCIceServer[] = [
+      // Google STUN servers
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      // Additional reliable STUN servers
+      { urls: 'stun:stun.ekiga.net' },
+      { urls: 'stun:stun.ideasip.com' },
+      { urls: 'stun:stun.rixtelecom.se' },
+      { urls: 'stun:stun.schlund.de' },
+      { urls: 'stun:stunserver.org' },
+      { urls: 'stun:stun.softjoys.com' },
+      { urls: 'stun:stun.voiparound.com' },
+      { urls: 'stun:stun.voipbuster.com' },
+      // Free TURN servers (limited bandwidth but helps with connectivity)
+      {
+        urls: 'turn:numb.viagenie.ca',
+        username: 'webrtc@live.com',
+        credential: 'muazkh'
+      },
+      {
+        urls: 'turn:192.158.29.39:3478?transport=udp',
+        username: '28224511:1379330808',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+      },
+      {
+        urls: 'turn:192.158.29.39:3478?transport=tcp',
+        username: '28224511:1379330808',
+        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+      },
+      // Twilio STUN servers (reliable)
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ];
+
+    // Add custom STUN/TURN servers from environment variables if provided
+    if (process.env.NEXT_PUBLIC_CUSTOM_STUN_SERVER) {
+      servers.unshift({ urls: process.env.NEXT_PUBLIC_CUSTOM_STUN_SERVER });
+      console.log('🧊 Added custom STUN server:', process.env.NEXT_PUBLIC_CUSTOM_STUN_SERVER);
+    }
+
+    if (process.env.NEXT_PUBLIC_CUSTOM_TURN_SERVER && 
+        process.env.NEXT_PUBLIC_TURN_USERNAME && 
+        process.env.NEXT_PUBLIC_TURN_CREDENTIAL) {
+      servers.unshift({
+        urls: process.env.NEXT_PUBLIC_CUSTOM_TURN_SERVER,
+        username: process.env.NEXT_PUBLIC_TURN_USERNAME,
+        credential: process.env.NEXT_PUBLIC_TURN_CREDENTIAL
+      });
+      console.log('🧊 Added custom TURN server:', process.env.NEXT_PUBLIC_CUSTOM_TURN_SERVER);
+    }
+
+    console.log('🧊 Using ICE servers:', servers.map(s => s.urls));
+    return servers;
+  }, []);
 
   // Cleanup function - moved outside useEffect to avoid dependency issues
   const cleanupCall = useCallback(() => {
@@ -153,20 +206,69 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
       return peerConnectionRef.current;
     }
 
-    const peerConnection = new RTCPeerConnection({ iceServers });
+    // Enhanced RTCPeerConnection configuration for better cross-network connectivity
+    const configuration: RTCConfiguration = {
+      iceServers,
+      // ICE transport policy to try all methods (relay, srflx, host)
+      iceTransportPolicy: 'all',
+      // Bundle policy to bundle all media streams
+      bundlePolicy: 'max-bundle',
+      // RTCP mux policy to multiplex RTCP
+      rtcpMuxPolicy: 'require',
+      // ICE candidate pool size for better connectivity
+      iceCandidatePoolSize: 10,
+    };
+
+    const peerConnection = new RTCPeerConnection(configuration);
     peerConnectionRef.current = peerConnection;
 
+    // Enhanced ICE candidate handling
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
-        console.log('🧊 Sending local ICE candidate');
+        console.log('🧊 Sending local ICE candidate:', {
+          type: event.candidate.type,
+          protocol: event.candidate.protocol,
+          address: event.candidate.address,
+          port: event.candidate.port
+        });
         socketRef.current.emit('ice-candidate', event.candidate);
       } else if (!event.candidate) {
         console.log('🧊 ICE gathering complete');
       }
     };
 
+    // ICE gathering state monitoring
+    peerConnection.onicegatheringstatechange = () => {
+      console.log('🧊 ICE gathering state:', peerConnection.iceGatheringState);
+    };
+
+    // ICE connection state monitoring
+    peerConnection.oniceconnectionstatechange = () => {
+      console.log('🧊 ICE connection state:', peerConnection.iceConnectionState);
+      
+      if (peerConnection.iceConnectionState === 'connected' || 
+          peerConnection.iceConnectionState === 'completed') {
+        console.log('✅ ICE connection established successfully');
+        setCallState(prev => ({ ...prev, error: null }));
+      } else if (peerConnection.iceConnectionState === 'failed') {
+        console.log('❌ ICE connection failed - attempting restart');
+        // Attempt ICE restart
+        peerConnection.restartIce();
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Connection failed, attempting to reconnect...' 
+        }));
+      } else if (peerConnection.iceConnectionState === 'disconnected') {
+        console.log('⚠️ ICE connection disconnected');
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Connection temporarily lost...' 
+        }));
+      }
+    };
+
     peerConnection.ontrack = (event) => {
-      console.log('Received remote stream');
+      console.log('📹 Received remote stream');
       const remoteStream = event.streams[0];
       setCallState(prev => ({ ...prev, remoteStream }));
       
@@ -176,7 +278,7 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     };
 
     peerConnection.onconnectionstatechange = () => {
-      console.log('Connection state:', peerConnection.connectionState);
+      console.log('🔌 Connection state:', peerConnection.connectionState);
       setCallState(prev => ({ ...prev, connectionState: peerConnection.connectionState }));
       
       if (peerConnection.connectionState === 'connected') {
@@ -184,13 +286,19 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
         setCallState(prev => ({ ...prev, isInCall: true, error: null }));
       } else if (peerConnection.connectionState === 'failed') {
         console.log('❌ WebRTC connection failed permanently');
-        setCallState(prev => ({ ...prev, error: 'Connection failed permanently' }));
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Connection failed. This may be due to firewall restrictions or network configuration.' 
+        }));
         // Only cleanup on permanent failure, not temporary disconnections
         setTimeout(() => cleanupCall(), 3000); // Give a few seconds for potential recovery
       } else if (peerConnection.connectionState === 'disconnected') {
         console.log('⚠️ WebRTC connection disconnected - attempting to maintain call');
         // Don't immediately cleanup on disconnection - might be temporary
-        setCallState(prev => ({ ...prev, error: 'Connection temporarily lost, attempting to reconnect...' }));
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Connection temporarily lost, attempting to reconnect...' 
+        }));
         
         // Only cleanup if still disconnected after a reasonable timeout
         setTimeout(() => {
@@ -199,11 +307,27 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
             setCallState(prev => ({ ...prev, error: 'Connection lost' }));
             cleanupCall();
           }
-        }, 10000); // Wait 10 seconds before giving up
+        }, 15000); // Increased timeout for cross-network scenarios
       } else if (peerConnection.connectionState === 'connecting') {
         console.log('🔄 WebRTC connection in progress...');
-        setCallState(prev => ({ ...prev, error: null }));
+        setCallState(prev => ({ 
+          ...prev, 
+          error: 'Connecting across networks... This may take a moment.' 
+        }));
       }
+    };
+
+    // Data channel for additional connectivity testing
+    const dataChannel = peerConnection.createDataChannel('connectivity-test', {
+      ordered: true
+    });
+    
+    dataChannel.onopen = () => {
+      console.log('📡 Data channel opened - connection is stable');
+    };
+
+    dataChannel.onerror = (error) => {
+      console.log('📡 Data channel error:', error);
     };
 
     return peerConnection;
@@ -292,14 +416,30 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
           peerConnection.addTrack(track, stream);
         });
 
-        const offer = await peerConnection.createOffer();
-        await peerConnection.setLocalDescription(offer);
+        // Enhanced offer options for better cross-network connectivity
+        const offerOptions: RTCOfferOptions = {
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+          iceRestart: false // Don't restart ICE unless needed
+        };
+
+        const offer = await peerConnection.createOffer(offerOptions);
+        
+        // Enhance SDP for better connectivity
+        const enhancedOffer = {
+          ...offer,
+          sdp: offer.sdp
+        };
+        
+        await peerConnection.setLocalDescription(enhancedOffer);
+        console.log('✅ Created and set local offer description');
         
         if (socketRef.current) {
-          socketRef.current.emit('offer', offer);
+          socketRef.current.emit('offer', enhancedOffer);
+          console.log('📤 Sent offer to remote peer');
         }
       } catch (error) {
-        console.error('Error creating offer:', error);
+        console.error('❌ Error creating offer:', error);
         setCallState(prev => ({ ...prev, error: 'Failed to create call offer' }));
       }
     };
@@ -313,20 +453,28 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
           peerConnection.addTrack(track, stream);
         });
 
+        console.log('📥 Setting remote description from offer');
         await peerConnection.setRemoteDescription(offer);
         console.log('✅ Remote description set from offer');
         
         // Process any queued ICE candidates now that remote description is set
         await processQueuedIceCandidates();
         
-        const answer = await peerConnection.createAnswer();
+        // Enhanced answer options for better cross-network connectivity
+        const answerOptions: RTCAnswerOptions = {};
+        
+        const answer = await peerConnection.createAnswer(answerOptions);
+        
+        console.log('✅ Created answer description');
         await peerConnection.setLocalDescription(answer);
+        console.log('✅ Set local answer description');
         
         if (socketRef.current) {
           socketRef.current.emit('answer', answer);
+          console.log('📤 Sent answer to remote peer');
         }
       } catch (error) {
-        console.error('Error handling offer:', error);
+        console.error('❌ Error handling offer:', error);
         setCallState(prev => ({ ...prev, error: 'Failed to handle call offer' }));
       }
     };
@@ -334,14 +482,18 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     const internalHandleAnswer = async (answer: RTCSessionDescriptionInit) => {
       try {
         if (peerConnectionRef.current) {
+          console.log('📥 Setting remote description from answer');
           await peerConnectionRef.current.setRemoteDescription(answer);
           console.log('✅ Remote description set from answer');
           
           // Process any queued ICE candidates now that remote description is set
           await processQueuedIceCandidates();
+          console.log('✅ Processed queued ICE candidates after answer');
+        } else {
+          console.error('❌ No peer connection available to set answer');
         }
       } catch (error) {
-        console.error('Error handling answer:', error);
+        console.error('❌ Error handling answer:', error);
         setCallState(prev => ({ ...prev, error: 'Failed to handle call answer' }));
       }
     };
@@ -673,6 +825,109 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     }
   }, [callState.localStream, callState.isVideoEnabled]);
 
+  // Network connectivity test function
+  const testConnectivity = useCallback(async (): Promise<{
+    stunServers: { url: string; working: boolean }[];
+    turnServers: { url: string; working: boolean }[];
+    mediaAccess: { audio: boolean; video: boolean };
+  }> => {
+    console.log('🔍 Testing network connectivity...');
+    
+    const results = {
+      stunServers: [] as { url: string; working: boolean }[],
+      turnServers: [] as { url: string; working: boolean }[],
+      mediaAccess: { audio: false, video: false }
+    };
+
+    // Test media access
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      results.mediaAccess.audio = stream.getAudioTracks().length > 0;
+      results.mediaAccess.video = stream.getVideoTracks().length > 0;
+      stream.getTracks().forEach(track => track.stop());
+      console.log('✅ Media access test passed');
+    } catch (error) {
+      console.log('❌ Media access test failed:', error);
+    }
+
+    // Test STUN servers
+    for (const server of iceServers.filter(s => {
+      const urls = Array.isArray(s.urls) ? s.urls[0] : s.urls;
+      return urls.startsWith('stun:');
+    })) {
+      try {
+        const testPc = new RTCPeerConnection({ iceServers: [server] });
+        const testResult = await new Promise<boolean>((resolve) => {
+          let resolved = false;
+          const timeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              resolve(false);
+            }
+          }, 5000);
+
+          testPc.onicecandidate = (event) => {
+            if (event.candidate && event.candidate.type === 'srflx' && !resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              resolve(true);
+            }
+          };
+
+          // Create a dummy offer to trigger ICE gathering
+          testPc.createOffer().then(offer => testPc.setLocalDescription(offer));
+        });
+
+        const serverUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+        results.stunServers.push({ url: serverUrl, working: testResult });
+        testPc.close();
+      } catch {
+        const serverUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+        results.stunServers.push({ url: serverUrl, working: false });
+      }
+    }
+
+    // Test TURN servers (basic connectivity test)
+    for (const server of iceServers.filter(s => {
+      const urls = Array.isArray(s.urls) ? s.urls[0] : s.urls;
+      return urls.startsWith('turn:');
+    })) {
+      try {
+        const testPc = new RTCPeerConnection({ iceServers: [server] });
+        const testResult = await new Promise<boolean>((resolve) => {
+          let resolved = false;
+          const timeout = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              resolve(false);
+            }
+          }, 8000);
+
+          testPc.onicecandidate = (event) => {
+            if (event.candidate && event.candidate.type === 'relay' && !resolved) {
+              resolved = true;
+              clearTimeout(timeout);
+              resolve(true);
+            }
+          };
+
+          // Create a dummy offer to trigger ICE gathering
+          testPc.createOffer().then(offer => testPc.setLocalDescription(offer));
+        });
+
+        const serverUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+        results.turnServers.push({ url: serverUrl, working: testResult });
+        testPc.close();
+      } catch {
+        const serverUrl = Array.isArray(server.urls) ? server.urls[0] : server.urls;
+        results.turnServers.push({ url: serverUrl, working: false });
+      }
+    }
+
+    console.log('🔍 Connectivity test results:', results);
+    return results;
+  }, [iceServers]);
+
   return {
     callState,
     incomingCall,
@@ -685,5 +940,6 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     endCall,
     toggleAudio,
     toggleVideo,
+    testConnectivity, // Added connectivity testing function
   };
 };

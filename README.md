@@ -181,10 +181,16 @@ NEXT_PUBLIC_SOCKET_URL=wss://your-signaling-server.com
 ## 🔧 Technical Details
 
 ### WebRTC Implementation
-- STUN servers for NAT traversal
-- ICE candidate exchange via Socket.IO
-- Peer-to-peer video/audio streaming
-- Connection state management
+- **Cross-Network Connectivity**: Enhanced STUN/TURN server configuration for connections across different networks
+- **Multiple STUN Servers**: Google, Ekiga, Twilio, and other reliable STUN servers for NAT discovery
+- **TURN Server Support**: Free TURN servers included for NAT relay when direct connection fails
+- **Custom Server Configuration**: Environment variables for custom STUN/TURN servers
+- **ICE Restart**: Automatic ICE restart on connection failure for better reliability
+- **Connection Diagnostics**: Built-in connectivity testing function for troubleshooting
+- **Enhanced ICE Handling**: Robust ICE candidate queueing and processing
+- **Data Channel**: Additional connectivity testing via WebRTC data channels
+- **Bundle Policy**: Optimized media bundling for better performance
+- **Connection Monitoring**: Real-time monitoring of ICE and connection states
 
 ### Security Features  
 - Mock authentication (replace with real auth)
