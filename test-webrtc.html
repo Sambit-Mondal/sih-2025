@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Cross-Network Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .video-container {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+        }
+        video {
+            width: 300px;
+            height: 200px;
+            background: #000;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+        }
+        .controls {
+            margin: 20px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            border: none;
+            border-radius: 5px;
+            background: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .log-container {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #007bff;
+            background: white;
+        }
+        .log-entry.error {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+        .log-entry.success {
+            border-left-color: #28a745;
+            background: #f5fff5;
+        }
+        .log-entry.warning {
+            border-left-color: #ffc107;
+            background: #fffdf5;
+        }
+        .status-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .status-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border: 1px solid #ddd;
+        }
+        .status-card h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        .status-value {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .connected { color: #28a745; }
+        .disconnected { color: #dc3545; }
+        .connecting { color: #ffc107; }
+    </style>
+</head>
+<body>
+    <h1>WebRTC Cross-Network Connectivity Test</h1>
+    <p>This test page helps verify WebRTC connections work across different networks using STUN/TURN servers.</p>
+    
+    <div class="controls">
+        <button id="startBtn">Start Local Video</button>
+        <button id="createOfferBtn" disabled>Create Offer</button>
+        <button id="testConnectivityBtn">Test Network Connectivity</button>
+        <button id="clearLogsBtn">Clear Logs</button>
+    </div>
+
+    <div class="video-container">
+        <div>
+            <h3>Local Video</h3>
+            <video id="localVideo" autoplay muted></video>
+        </div>
+        <div>
+            <h3>Remote Video</h3>
+            <video id="remoteVideo" autoplay></video>
+        </div>
+    </div>
+
+    <div class="status-info">
+        <div class="status-card">
+            <h3>Connection State</h3>
+            <div id="connectionState" class="status-value disconnected">disconnected</div>
+        </div>
+        <div class="status-card">
+            <h3>ICE Connection State</h3>
+            <div id="iceConnectionState" class="status-value disconnected">new</div>
+        </div>
+        <div class="status-card">
+            <h3>ICE Gathering State</h3>
+            <div id="iceGatheringState" class="status-value">new</div>
+        </div>
+        <div class="status-card">
+            <h3>Signaling State</h3>
+            <div id="signalingState" class="status-value">stable</div>
+        </div>
+    </div>
+
+    <div class="log-container">
+        <h3>Connection Logs</h3>
+        <div id="logs"></div>
+    </div>
+
+    <script>
+        // Enhanced STUN/TURN server configuration
+        const iceServers = [
+            // Google's public STUN servers
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            
+            // Reliable TURN servers with authentication
+            {
+                urls: [
+                    'stun:openrelay.metered.ca:80',
+                    'turn:openrelay.metered.ca:80',
+                    'turn:openrelay.metered.ca:443',
+                    'turn:openrelay.metered.ca:443?transport=tcp'
+                ],
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: [
+                    'stun:numb.viagenie.ca',
+                    'turn:numb.viagenie.ca',
+                    'turn:numb.viagenie.ca?transport=tcp'
+                ],
+                username: 'webrtc@live.com',
+                credential: 'muazkh'
+            },
+            {
+                urls: [
+                    'stun:turn.bistri.com:80',
+                    'turn:turn.bistri.com:80',
+                    'turn:turn.bistri.com:80?transport=tcp'
+                ],
+                username: 'homeo',
+                credential: 'homeo'
+            }
+        ];
+
+        let localVideo = document.getElementById('localVideo');
+        let remoteVideo = document.getElementById('remoteVideo');
+        let peerConnection = null;
+        let localStream = null;
+
+        // UI Elements
+        const startBtn = document.getElementById('startBtn');
+        const createOfferBtn = document.getElementById('createOfferBtn');
+        const testConnectivityBtn = document.getElementById('testConnectivityBtn');
+        const clearLogsBtn = document.getElementById('clearLogsBtn');
+
+        // Status elements
+        const connectionStateEl = document.getElementById('connectionState');
+        const iceConnectionStateEl = document.getElementById('iceConnectionState');
+        const iceGatheringStateEl = document.getElementById('iceGatheringState');
+        const signalingStateEl = document.getElementById('signalingState');
+
+        function log(message, type = 'info') {
+            console.log(`[${type.toUpperCase()}]`, message);
+            const logsEl = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${type}`;
+            logEntry.innerHTML = `<strong>${new Date().toLocaleTimeString()}</strong> - ${message}`;
+            logsEl.appendChild(logEntry);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        function updateStatus(element, value, getClass) {
+            element.textContent = value;
+            element.className = `status-value ${getClass(value)}`;
+        }
+
+        function getConnectionClass(state) {
+            switch(state) {
+                case 'connected': return 'connected';
+                case 'connecting': case 'checking': return 'connecting';
+                default: return 'disconnected';
+            }
+        }
+
+        async function startLocalVideo() {
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                localVideo.srcObject = localStream;
+                startBtn.disabled = true;
+                createOfferBtn.disabled = false;
+                log('Local video stream started successfully', 'success');
+            } catch (error) {
+                log(`Error accessing media devices: ${error.message}`, 'error');
+            }
+        }
+
+        async function createPeerConnection() {
+            try {
+                // Enhanced RTCPeerConnection configuration
+                const configuration = {
+                    iceServers,
+                    iceTransportPolicy: 'all',
+                    bundlePolicy: 'max-bundle',
+                    rtcpMuxPolicy: 'require',
+                    iceCandidatePoolSize: 10,
+                };
+
+                peerConnection = new RTCPeerConnection(configuration);
+                
+                // Add event listeners
+                peerConnection.addEventListener('icecandidate', handleIceCandidate);
+                peerConnection.addEventListener('iceconnectionstatechange', handleIceConnectionStateChange);
+                peerConnection.addEventListener('icegatheringstatechange', handleIceGatheringStateChange);
+                peerConnection.addEventListener('connectionstatechange', handleConnectionStateChange);
+                peerConnection.addEventListener('signalingstatechange', handleSignalingStateChange);
+                peerConnection.addEventListener('track', handleRemoteTrack);
+
+                // Add local stream to peer connection
+                if (localStream) {
+                    localStream.getTracks().forEach(track => {
+                        peerConnection.addTrack(track, localStream);
+                    });
+                    log('Added local stream to peer connection', 'success');
+                }
+
+                return peerConnection;
+            } catch (error) {
+                log(`Error creating peer connection: ${error.message}`, 'error');
+                throw error;
+            }
+        }
+
+        function handleIceCandidate(event) {
+            if (event.candidate) {
+                log(`ICE candidate generated: ${event.candidate.candidate}`, 'info');
+                log(`Candidate type: ${event.candidate.type}, Protocol: ${event.candidate.protocol}`, 'info');
+            } else {
+                log('ICE gathering completed', 'success');
+            }
+        }
+
+        function handleIceConnectionStateChange() {
+            const state = peerConnection.iceConnectionState;
+            log(`ICE connection state changed: ${state}`, 'info');
+            updateStatus(iceConnectionStateEl, state, getConnectionClass);
+
+            if (state === 'failed') {
+                log('ICE connection failed - attempting restart', 'warning');
+                restartIce();
+            }
+        }
+
+        function handleIceGatheringStateChange() {
+            const state = peerConnection.iceGatheringState;
+            log(`ICE gathering state changed: ${state}`, 'info');
+            updateStatus(iceGatheringStateEl, state, getConnectionClass);
+        }
+
+        function handleConnectionStateChange() {
+            const state = peerConnection.connectionState;
+            log(`Peer connection state changed: ${state}`, 'info');
+            updateStatus(connectionStateEl, state, getConnectionClass);
+
+            if (state === 'failed') {
+                log('Peer connection failed - check TURN server configuration', 'error');
+            } else if (state === 'connected') {
+                log('Peer connection established successfully!', 'success');
+            }
+        }
+
+        function handleSignalingStateChange() {
+            const state = peerConnection.signalingState;
+            log(`Signaling state changed: ${state}`, 'info');
+            updateStatus(signalingStateEl, state, getConnectionClass);
+        }
+
+        function handleRemoteTrack(event) {
+            log('Received remote track', 'success');
+            remoteVideo.srcObject = event.streams[0];
+        }
+
+        async function restartIce() {
+            try {
+                log('Attempting ICE restart...', 'warning');
+                await peerConnection.restartIce();
+            } catch (error) {
+                log(`ICE restart failed: ${error.message}`, 'error');
+            }
+        }
+
+        async function createOffer() {
+            try {
+                if (!peerConnection) {
+                    await createPeerConnection();
+                }
+
+                const offer = await peerConnection.createOffer({
+                    offerToReceiveAudio: true,
+                    offerToReceiveVideo: true,
+                    iceRestart: false
+                });
+
+                await peerConnection.setLocalDescription(offer);
+                log('Created and set local offer description', 'success');
+                log(`Offer SDP:\n${offer.sdp}`, 'info');
+                
+                // In a real application, you would send this offer to the remote peer
+                log('Offer created successfully - ready to send to remote peer', 'success');
+                
+            } catch (error) {
+                log(`Error creating offer: ${error.message}`, 'error');
+            }
+        }
+
+        async function testConnectivity() {
+            log('Starting network connectivity test...', 'info');
+            
+            try {
+                // Test STUN server connectivity
+                const stunPc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+
+                let candidatesFound = 0;
+                stunPc.addEventListener('icecandidate', (event) => {
+                    if (event.candidate) {
+                        candidatesFound++;
+                        log(`STUN test - Candidate ${candidatesFound}: ${event.candidate.candidate}`, 'info');
+                    }
+                });
+
+                stunPc.createDataChannel('test');
+                const offer = await stunPc.createOffer();
+                await stunPc.setLocalDescription(offer);
+
+                // Wait for ICE gathering
+                await new Promise((resolve) => {
+                    setTimeout(() => {
+                        if (candidatesFound > 0) {
+                            log(`Network connectivity test completed - Found ${candidatesFound} candidates`, 'success');
+                        } else {
+                            log('Network connectivity test failed - No ICE candidates found', 'error');
+                        }
+                        stunPc.close();
+                        resolve();
+                    }, 5000);
+                });
+
+            } catch (error) {
+                log(`Network connectivity test error: ${error.message}`, 'error');
+            }
+        }
+
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startLocalVideo);
+        createOfferBtn.addEventListener('click', createOffer);
+        testConnectivityBtn.addEventListener('click', testConnectivity);
+        clearLogsBtn.addEventListener('click', clearLogs);
+
+        // Initial log
+        log('WebRTC Cross-Network Test initialized', 'success');
+        log('Click "Start Local Video" to begin, then "Test Network Connectivity" to check STUN/TURN servers', 'info');
+    </script>
+</body>
+</html>

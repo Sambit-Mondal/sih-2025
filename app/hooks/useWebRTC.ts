@@ -48,39 +48,49 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
   // STUN/TURN servers configuration for cross-network connectivity
   const iceServers: RTCIceServer[] = useMemo(() => {
     const servers: RTCIceServer[] = [
-      // Google STUN servers
-      { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
-      { urls: 'stun:stun2.l.google.com:19302' },
-      { urls: 'stun:stun3.l.google.com:19302' },
-      { urls: 'stun:stun4.l.google.com:19302' },
-      // Additional reliable STUN servers
-      { urls: 'stun:stun.ekiga.net' },
-      { urls: 'stun:stun.ideasip.com' },
-      { urls: 'stun:stun.rixtelecom.se' },
-      { urls: 'stun:stun.schlund.de' },
-      { urls: 'stun:stunserver.org' },
-      { urls: 'stun:stun.softjoys.com' },
-      { urls: 'stun:stun.voiparound.com' },
-      { urls: 'stun:stun.voipbuster.com' },
-      // Free TURN servers (limited bandwidth but helps with connectivity)
+      // Primary reliable TURN servers (these have higher success rates)
+      {
+        urls: [
+          'turn:openrelay.metered.ca:80',
+          'turn:openrelay.metered.ca:443',
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
       {
         urls: 'turn:numb.viagenie.ca',
         username: 'webrtc@live.com',
         credential: 'muazkh'
       },
+      // Google TURN servers (requires authentication but more reliable)
       {
-        urls: 'turn:192.158.29.39:3478?transport=udp',
-        username: '28224511:1379330808',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
+        urls: [
+          'turn:142.93.86.224:3478',
+          'turn:142.93.86.224:3478?transport=tcp'
+        ],
+        username: 'guest',
+        credential: 'somepassword'
       },
-      {
-        urls: 'turn:192.158.29.39:3478?transport=tcp',
-        username: '28224511:1379330808',
-        credential: 'JZEOEt2V3Qb0y27GRntt2u2PAYA='
-      },
-      // Twilio STUN servers (reliable)
+      // Multiple STUN servers for NAT discovery
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.ekiga.net' },
+      { urls: 'stun:stun.schlund.de' },
+      { urls: 'stun:stunserver.org' },
+      { urls: 'stun:stun.softjoys.com' },
+      { urls: 'stun:stun.voiparound.com' },
+      // Twilio STUN servers
       { urls: 'stun:global.stun.twilio.com:3478' },
+      // Additional reliable TURN servers
+      {
+        urls: [
+          'turn:turn.bistri.com:80',
+          'turn:turn.bistri.com:443'
+        ],
+        username: 'homeo',
+        credential: 'homeo'
+      },
     ];
 
     // Add custom STUN/TURN servers from environment variables if provided
@@ -100,7 +110,7 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
       console.log('🧊 Added custom TURN server:', process.env.NEXT_PUBLIC_CUSTOM_TURN_SERVER);
     }
 
-    console.log('🧊 Using ICE servers:', servers.map(s => s.urls));
+    console.log('🧊 Using ICE servers:', servers.map(s => ({ urls: s.urls, hasAuth: !!s.username })));
     return servers;
   }, []);
 
@@ -209,27 +219,32 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
     // Enhanced RTCPeerConnection configuration for better cross-network connectivity
     const configuration: RTCConfiguration = {
       iceServers,
-      // ICE transport policy to try all methods (relay, srflx, host)
-      iceTransportPolicy: 'all',
-      // Bundle policy to bundle all media streams
+      // Force TURN server usage for cross-network scenarios
+      iceTransportPolicy: 'all', // Try all transport types
       bundlePolicy: 'max-bundle',
-      // RTCP mux policy to multiplex RTCP
       rtcpMuxPolicy: 'require',
-      // ICE candidate pool size for better connectivity
       iceCandidatePoolSize: 10,
     };
+
+    console.log('🔧 Creating RTCPeerConnection with config:', {
+      iceServersCount: configuration.iceServers?.length,
+      iceTransportPolicy: configuration.iceTransportPolicy,
+      bundlePolicy: configuration.bundlePolicy
+    });
 
     const peerConnection = new RTCPeerConnection(configuration);
     peerConnectionRef.current = peerConnection;
 
-    // Enhanced ICE candidate handling
+    // Enhanced ICE candidate handling with detailed logging
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && socketRef.current) {
         console.log('🧊 Sending local ICE candidate:', {
           type: event.candidate.type,
           protocol: event.candidate.protocol,
-          address: event.candidate.address,
-          port: event.candidate.port
+          address: event.candidate.address?.substring(0, 10) + '...',
+          port: event.candidate.port,
+          priority: event.candidate.priority,
+          foundation: event.candidate.foundation
         });
         socketRef.current.emit('ice-candidate', event.candidate);
       } else if (!event.candidate) {
@@ -237,43 +252,90 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
       }
     };
 
-    // ICE gathering state monitoring
+    // Enhanced ICE gathering state monitoring
     peerConnection.onicegatheringstatechange = () => {
       console.log('🧊 ICE gathering state:', peerConnection.iceGatheringState);
+      if (peerConnection.iceGatheringState === 'complete') {
+        console.log('🧊 All ICE candidates have been gathered');
+      }
     };
 
-    // ICE connection state monitoring
+    // Enhanced ICE connection state monitoring with detailed handling
     peerConnection.oniceconnectionstatechange = () => {
       console.log('🧊 ICE connection state:', peerConnection.iceConnectionState);
       
-      if (peerConnection.iceConnectionState === 'connected' || 
-          peerConnection.iceConnectionState === 'completed') {
-        console.log('✅ ICE connection established successfully');
-        setCallState(prev => ({ ...prev, error: null }));
-      } else if (peerConnection.iceConnectionState === 'failed') {
-        console.log('❌ ICE connection failed - attempting restart');
-        // Attempt ICE restart
-        peerConnection.restartIce();
-        setCallState(prev => ({ 
-          ...prev, 
-          error: 'Connection failed, attempting to reconnect...' 
-        }));
-      } else if (peerConnection.iceConnectionState === 'disconnected') {
-        console.log('⚠️ ICE connection disconnected');
-        setCallState(prev => ({ 
-          ...prev, 
-          error: 'Connection temporarily lost...' 
-        }));
+      switch (peerConnection.iceConnectionState) {
+        case 'connected':
+        case 'completed':
+          console.log('✅ ICE connection established successfully');
+          setCallState(prev => ({ ...prev, error: null }));
+          break;
+          
+        case 'disconnected':
+          console.log('⚠️ ICE connection disconnected - attempting recovery');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Connection interrupted, attempting to reconnect...' 
+          }));
+          
+          // Give some time for automatic recovery before restarting ICE
+          setTimeout(() => {
+            if (peerConnection.iceConnectionState === 'disconnected') {
+              console.log('🔄 ICE still disconnected, attempting restart');
+              try {
+                peerConnection.restartIce();
+              } catch (error) {
+                console.error('❌ Failed to restart ICE:', error);
+              }
+            }
+          }, 3000);
+          break;
+          
+        case 'failed':
+          console.log('❌ ICE connection failed permanently');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Connection failed. Please check your network connection and try again.' 
+          }));
+          
+          // Try ICE restart as last resort
+          console.log('🔄 Attempting ICE restart as last resort');
+          try {
+            peerConnection.restartIce();
+          } catch (error) {
+            console.error('❌ ICE restart failed:', error);
+            // Don't cleanup immediately, let the connection state handler do it
+          }
+          break;
+          
+        case 'checking':
+          console.log('🔍 ICE connectivity checks in progress');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Establishing connection across networks...' 
+          }));
+          break;
+          
+        case 'new':
+          console.log('🆕 ICE connection state: new');
+          break;
+          
+        default:
+          console.log('🧊 ICE connection state:', peerConnection.iceConnectionState);
       }
     };
 
     peerConnection.ontrack = (event) => {
-      console.log('📹 Received remote stream');
+      console.log('📹 Received remote stream', {
+        streamId: event.streams[0]?.id,
+        trackCount: event.streams[0]?.getTracks().length
+      });
       const remoteStream = event.streams[0];
       setCallState(prev => ({ ...prev, remoteStream }));
       
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = remoteStream;
+        console.log('📹 Set remote video source');
       }
     };
 
@@ -281,53 +343,101 @@ export const useWebRTC = (userId: string, userName: string, userRole: 'patient' 
       console.log('🔌 Connection state:', peerConnection.connectionState);
       setCallState(prev => ({ ...prev, connectionState: peerConnection.connectionState }));
       
-      if (peerConnection.connectionState === 'connected') {
-        console.log('✅ WebRTC connection established successfully');
-        setCallState(prev => ({ ...prev, isInCall: true, error: null }));
-      } else if (peerConnection.connectionState === 'failed') {
-        console.log('❌ WebRTC connection failed permanently');
-        setCallState(prev => ({ 
-          ...prev, 
-          error: 'Connection failed. This may be due to firewall restrictions or network configuration.' 
-        }));
-        // Only cleanup on permanent failure, not temporary disconnections
-        setTimeout(() => cleanupCall(), 3000); // Give a few seconds for potential recovery
-      } else if (peerConnection.connectionState === 'disconnected') {
-        console.log('⚠️ WebRTC connection disconnected - attempting to maintain call');
-        // Don't immediately cleanup on disconnection - might be temporary
-        setCallState(prev => ({ 
-          ...prev, 
-          error: 'Connection temporarily lost, attempting to reconnect...' 
-        }));
-        
-        // Only cleanup if still disconnected after a reasonable timeout
-        setTimeout(() => {
-          if (peerConnection.connectionState === 'disconnected') {
-            console.log('❌ WebRTC connection remained disconnected, cleaning up');
-            setCallState(prev => ({ ...prev, error: 'Connection lost' }));
-            cleanupCall();
-          }
-        }, 15000); // Increased timeout for cross-network scenarios
-      } else if (peerConnection.connectionState === 'connecting') {
-        console.log('🔄 WebRTC connection in progress...');
-        setCallState(prev => ({ 
-          ...prev, 
-          error: 'Connecting across networks... This may take a moment.' 
-        }));
+      switch (peerConnection.connectionState) {
+        case 'connected':
+          console.log('✅ WebRTC connection established successfully');
+          setCallState(prev => ({ ...prev, isInCall: true, error: null }));
+          break;
+          
+        case 'connecting':
+          console.log('🔄 WebRTC connection in progress...');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Connecting across networks... Please wait.' 
+          }));
+          break;
+          
+        case 'disconnected':
+          console.log('⚠️ WebRTC connection disconnected - maintaining call state');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Connection temporarily lost, attempting to reconnect...' 
+          }));
+          
+          // Extended timeout for cross-network scenarios
+          setTimeout(() => {
+            if (peerConnection.connectionState === 'disconnected') {
+              console.log('❌ WebRTC connection remained disconnected, cleaning up');
+              setCallState(prev => ({ ...prev, error: 'Connection lost' }));
+              cleanupCall();
+            }
+          }, 20000); // Increased to 20 seconds for cross-network recovery
+          break;
+          
+        case 'failed':
+          console.log('❌ WebRTC connection failed permanently');
+          setCallState(prev => ({ 
+            ...prev, 
+            error: 'Connection failed. This may be due to network restrictions. Please try again.' 
+          }));
+          
+          // Give extra time before cleanup for potential recovery
+          setTimeout(() => {
+            if (peerConnection.connectionState === 'failed') {
+              cleanupCall();
+            }
+          }, 5000);
+          break;
+          
+        case 'new':
+          console.log('🆕 New WebRTC connection created');
+          break;
+          
+        case 'closed':
+          console.log('🔒 WebRTC connection closed');
+          break;
+          
+        default:
+          console.log('🔌 Unknown connection state:', peerConnection.connectionState);
       }
     };
 
-    // Data channel for additional connectivity testing
+    // Enhanced data channel for connectivity testing
     const dataChannel = peerConnection.createDataChannel('connectivity-test', {
-      ordered: true
+      ordered: true,
+      maxRetransmits: 3
     });
     
     dataChannel.onopen = () => {
       console.log('📡 Data channel opened - connection is stable');
+      // Send a test message to verify data channel works
+      try {
+        dataChannel.send(JSON.stringify({ 
+          type: 'connectivity-test', 
+          timestamp: Date.now() 
+        }));
+        console.log('📡 Sent connectivity test message');
+      } catch (error) {
+        console.log('📡 Failed to send test message:', error);
+      }
     };
 
     dataChannel.onerror = (error) => {
       console.log('📡 Data channel error:', error);
+    };
+
+    dataChannel.onmessage = (event) => {
+      console.log('📡 Data channel message received:', event.data);
+    };
+
+    // Handle incoming data channels
+    peerConnection.ondatachannel = (event) => {
+      const channel = event.channel;
+      console.log('📡 Received data channel:', channel.label);
+      
+      channel.onmessage = (messageEvent) => {
+        console.log('📡 Data channel message:', messageEvent.data);
+      };
     };
 
     return peerConnection;

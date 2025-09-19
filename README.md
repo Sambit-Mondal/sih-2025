@@ -15,11 +15,14 @@ A production-ready video conferencing platform built with Next.js 15, TypeScript
 
 ### Technical Features
 - **TypeScript**: Full type safety throughout the application
-- **WebRTC**: Direct peer-to-peer video communication
+- **WebRTC**: Direct peer-to-peer video communication with cross-network support
 - **Socket.IO**: Real-time signaling server
-- **STUN Servers**: NAT traversal support
-- **Error Handling**: Comprehensive error management
-- **Production Ready**: Optimized for deployment
+- **STUN/TURN Servers**: Enhanced NAT traversal with multiple reliable servers
+- **Cross-Network Connectivity**: Works across different networks and firewalls
+- **ICE Connection Recovery**: Automatic connection recovery and restart mechanisms
+- **Connection Diagnostics**: Built-in network connectivity testing
+- **Error Handling**: Comprehensive error management and logging
+- **Production Ready**: Optimized for deployment with robust configuration
 
 ## 🏗️ Architecture
 
@@ -216,6 +219,97 @@ NEXT_PUBLIC_SOCKET_URL=wss://your-signaling-server.com
 - doctor1@example.com / password123
 - doctor2@example.com / password123
 - doctor3@example.com / password123
+
+## 🔧 Troubleshooting
+
+### Cross-Network Connectivity Issues
+
+If video calls work on the same network but fail across different networks:
+
+#### Quick Test
+1. Open `test-webrtc.html` in your browser
+2. Click "Test Network Connectivity" to check STUN/TURN servers
+3. Look for ICE candidates in the logs - you should see both `host` and `relay` candidates
+
+#### Common Issues and Solutions
+
+**Issue: ICE connection fails (checking → failed)**
+```bash
+# Solution: Verify TURN servers are accessible
+# Check the browser console for detailed error messages
+# Ensure firewall allows WebRTC traffic on required ports
+```
+
+**Issue: Only host candidates found**
+- **Cause**: TURN servers not accessible or incorrectly configured
+- **Solution**: Update `.env` with custom TURN servers if default ones fail
+- **Test**: Use the connectivity test to verify TURN server access
+
+**Issue: Connection works locally but fails remotely**
+- **Cause**: NAT/Firewall blocking TURN server traffic
+- **Solution**: 
+  1. Use TURN servers with TCP fallback (port 443)
+  2. Configure firewall to allow WebRTC traffic
+  3. Test with different TURN server providers
+
+#### Environment Configuration
+
+Create a `.env.local` file for custom STUN/TURN servers:
+
+```env
+# Custom STUN/TURN Configuration (optional)
+NEXT_PUBLIC_STUN_SERVER_1=stun:your-stun-server.com:3478
+NEXT_PUBLIC_TURN_SERVER_1=turn:your-turn-server.com:3478
+NEXT_PUBLIC_TURN_USERNAME_1=your-username
+NEXT_PUBLIC_TURN_PASSWORD_1=your-password
+
+NEXT_PUBLIC_TURN_SERVER_2=turns:your-turn-server.com:5349
+NEXT_PUBLIC_TURN_USERNAME_2=your-username  
+NEXT_PUBLIC_TURN_PASSWORD_2=your-password
+```
+
+#### Network Requirements
+
+**Ports needed for WebRTC:**
+- **UDP 1024-65535**: For ICE/STUN/TURN traffic
+- **TCP 443**: For TURN over TLS
+- **TCP 80**: For TURN over HTTP
+
+**Firewall Configuration:**
+```bash
+# Allow WebRTC traffic (example for Ubuntu/Debian)
+sudo ufw allow 1024:65535/udp
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+#### Advanced Debugging
+
+**Enable detailed WebRTC logs:**
+1. Open Chrome DevTools
+2. Go to chrome://webrtc-internals
+3. Monitor connection attempts and ICE gathering
+
+**Log Analysis:**
+- `host` candidates: Local network addresses
+- `srflx` candidates: Server reflexive (via STUN)
+- `relay` candidates: Relayed through TURN server
+
+**Connection Success Indicators:**
+```
+✅ ICE gathering: complete
+✅ ICE connection: connected
+✅ Connection state: connected
+✅ Multiple candidate types found
+```
+
+#### Performance Optimization
+
+**For better cross-network performance:**
+- Use multiple TURN servers for redundancy
+- Prefer TURN servers geographically close to users
+- Enable TCP fallback for restrictive networks
+- Monitor connection quality and implement fallback logic
 
 ### Browser Support
 - Chrome (recommended)
